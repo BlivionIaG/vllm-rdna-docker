@@ -39,9 +39,9 @@ target "base-rocm714" {
     BASE_IMAGE        = "rocm/dev-ubuntu-22.04:7.14.0-full"
     BASE_DIGEST       = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     ROCM_VERSION      = "7.14.0"
-    PYTORCH_VERSION   = "2.13.0"
+    PYTORCH_VERSION   = "2.12.0+rocm7.14.0"
     TRITON_VERSION    = "3.7.1"
-    PYTORCH_INDEX_URL = "https://download.pytorch.org/whl/rocm7.14"
+    PYTORCH_INDEX_URL = "https://repo.amd.com/rocm/whl-multi-arch/"
     PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
     BASE_TAG          = "7.14.0"
   }
