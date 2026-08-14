@@ -33,6 +33,8 @@ ARG BASE_IMAGE=rocm/dev-ubuntu-22.04:7.2-complete
 ARG ROCM_VERSION=7.2.0
 ARG PYTHON_VERSION=3.12
 ARG PYTORCH_VERSION=
+ARG TORCHVISION_VERSION=
+ARG TORCHAUDIO_VERSION=
 ARG TRITON_VERSION=
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm7.2
 ARG BASE_DIGEST=
@@ -171,8 +173,8 @@ ARG USE_SCCACHE
 RUN uv pip install --system --pre --force-reinstall --no-cache \
         --index-url "${PYTORCH_INDEX_URL}" \
         "torch${PYTORCH_VERSION:+==${PYTORCH_VERSION}}" \
-        torchvision \
-        torchaudio \
+        "torchvision${TORCHVISION_VERSION:+==${TORCHVISION_VERSION}}" \
+        "torchaudio${TORCHAUDIO_VERSION:+==${TORCHAUDIO_VERSION}}" \
         "triton${TRITON_VERSION:+==${TRITON_VERSION}}"
 
 # AMD SMI wheel (Python bindings shipped inside the ROCm tree).
