@@ -11,8 +11,6 @@ name: vllm-rdna-docker build
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
     tags:
       - "v*"
 
@@ -56,8 +54,6 @@ jobs:
           if-no-files-found: ignore
 
   gpu-smoke:
-    # Manual trigger only: builds real images on the external Podman runner.
-    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, rdna]
     steps:
       - name: Checkout

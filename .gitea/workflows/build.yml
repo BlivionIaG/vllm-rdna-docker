@@ -8,7 +8,11 @@
 
 name: vllm-rdna-docker build
 
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 jobs:
   build:
@@ -48,8 +52,6 @@ jobs:
           if-no-files-found: ignore
 
   gpu-smoke:
-    # Manual trigger only: builds real images on the external Podman runner.
-    if: gitea.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, rdna]
     steps:
       - name: Checkout
