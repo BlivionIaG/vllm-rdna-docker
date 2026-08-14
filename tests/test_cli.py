@@ -297,6 +297,164 @@ def test_rendering_is_deterministic_across_calls() -> None:
 
 
 # ---------------------------------------------------------------------------
+# docker buildx bake (modern CI path)
+# ---------------------------------------------------------------------------
+
+
+def test_bake_file_generated_per_resolved_base(tmp_path: Path) -> None:
+    """Each [bases.*] entry in the config becomes a base-<id> bake target."""
+    import json
+
+    from tools.bake import base_target_name, render_bake_file
+
+    resolved = resolve_config(load_config(EXAMPLE_CONFIG))
+    bake_file = render_bake_file(
+        resolved,
+        {"host": "docker.io", "base_repository": "x/y", "vllm_repository": "x/z"},
+        tmp_path,
+    )
+    data = json.loads(bake_file.read_text())
+    for base in resolved.base_records:
+        target_name = base_target_name(base.id)
+        assert target_name in data["target"], f"missing bake target: {target_name}"
+        target = data["target"][target_name]
+        assert target["dockerfile"] == "Dockerfile.base"
+        assert target["args"]["BASE_IMAGE"] == base.base_image
+        assert target["args"]["ROCM_VERSION"] == base.rocm_version
+        assert target["tags"] == [f"docker.io/x/y:{base.tag}"]
+
+
+def test_bake_file_generated_per_resolved_image(tmp_path: Path) -> None:
+    """Each [[images]] entry becomes a vllm-<image_id> bake target."""
+    import json
+
+    from tools.bake import render_bake_file, vllm_target_name
+
+    resolved = resolve_config(load_config(EXAMPLE_CONFIG))
+    bake_file = render_bake_file(
+        resolved,
+        {"host": "docker.io", "base_repository": "x/y", "vllm_repository": "x/z"},
+        tmp_path,
+    )
+    data = json.loads(bake_file.read_text())
+    for image in resolved.image_records:
+        target_name = vllm_target_name(image.id)
+        assert target_name in data["target"], f"missing bake target: {target_name}"
+        target = data["target"][target_name]
+        assert target["dockerfile"] == "Dockerfile.vllm"
+        assert target["args"]["VLLM_COMMIT"] == image.source_record.resolved_commit
+        assert target["args"]["TORCH_BACKEND"] == (
+            f"rocm{'.'.join(image.base_record.rocm_version.split('.')[:2])}"
+        )
+        assert target["tags"] == [f"docker.io/x/z:{image.tag}"]
+
+
+def test_bake_file_has_all_groups(tmp_path: Path) -> None:
+    """The bake file declares all-bases, all-vllm, and all groups."""
+    import json
+
+    from tools.bake import render_bake_file
+
+    resolved = resolve_config(load_config(EXAMPLE_CONFIG))
+    bake_file = render_bake_file(
+        resolved,
+        {"host": "docker.io", "base_repository": "x/y", "vllm_repository": "x/z"},
+        tmp_path,
+    )
+    data = json.loads(bake_file.read_text())
+    assert "all-bases" in data["group"]
+    assert "all-vllm" in data["group"]
+    assert "all" in data["group"]
+    assert len(data["group"]["all"]["targets"]) == (
+        len(resolved.base_records) + len(resolved.image_records)
+    )
+
+
+def test_build_base_docker_engine_invokes_bake(tmp_path: Path) -> None:
+    """--engine docker writes docker-bake.json and renders 'docker buildx bake' argv."""
+    import json
+
+    from tools.bake import base_target_name
+
+    result = _run_cli(
+        "build-base",
+        "--config", str(EXAMPLE_CONFIG),
+        "--engine", "docker",
+        "--base", "rocm720",
+        "--dry-run",
+    )
+    assert result.returncode == 0, result.stderr
+    line = result.stdout.splitlines()[0]
+    assert line.startswith("docker buildx bake ")
+    assert base_target_name("rocm720") in line
+    assert "--file" in line
+    bake_path = Path(line.split("--file ", 1)[1].split()[0])
+    assert bake_path.is_file()
+    data = json.loads(bake_path.read_text())
+    assert base_target_name("rocm720") in data["target"]
+    assert base_target_name("rocm714") in data["target"]
+
+
+def test_build_vllm_docker_engine_invokes_bake_multi_target(tmp_path: Path) -> None:
+    """--engine docker build-vllm uses one docker buildx bake with all targets
+    (parallel build) rather than one invocation per target."""
+    result = _run_cli(
+        "build-vllm",
+        "--config", str(EXAMPLE_CONFIG),
+        "--engine", "docker",
+        "--dry-run",
+    )
+    assert result.returncode == 0, result.stderr
+    rendered = result.stdout.splitlines()
+    assert len(rendered) == 1, f"expected one Bake invocation, got {len(rendered)}"
+    line = rendered[0]
+    assert line.startswith("docker buildx bake ")
+    resolved = resolve_config(load_config(EXAMPLE_CONFIG))
+    for image in resolved.image_records:
+        assert image.id in line, f"target {image.id} missing from multi-target bake"
+    assert "all-vllm" in result.stderr
+
+
+def test_bake_matrix_count_matches_config(tmp_path: Path) -> None:
+    """The bake file has exactly len(bases) + len(images) targets.
+    Adding a new [bases.*] or [[images]] entry in the config adds
+    exactly one new target — no source change needed.
+    """
+    import json
+
+    from tools.bake import render_bake_file
+
+    resolved = resolve_config(load_config(EXAMPLE_CONFIG))
+    bake_file = render_bake_file(
+        resolved,
+        {"host": "docker.io", "base_repository": "x/y", "vllm_repository": "x/z"},
+        tmp_path,
+    )
+    data = json.loads(bake_file.read_text())
+    n_bases = len(resolved.base_records)
+    n_images = len(resolved.image_records)
+    assert len(data["target"]) == n_bases + n_images
+    assert len(data["group"]["all"]["targets"]) == n_bases + n_images
+    assert n_bases == 2
+    assert n_images == 4
+
+
+def test_build_base_podman_engine_uses_direct_argv() -> None:
+    """--engine podman keeps the legacy direct-build argv (manual local builds)."""
+    result = _run_cli(
+        "build-base",
+        "--config", str(EXAMPLE_CONFIG),
+        "--engine", "podman",
+        "--base", "rocm720",
+        "--dry-run",
+    )
+    assert result.returncode == 0
+    line = result.stdout.splitlines()[0]
+    assert line.startswith("podman build ")
+    assert "--pull" not in line
+
+
+# ---------------------------------------------------------------------------
 # Engine selection
 # ---------------------------------------------------------------------------
 
@@ -377,8 +535,8 @@ def test_cli_container_engine_env_selects_docker() -> None:
         env={ENGINE_ENV_VAR: "docker"},
     )
     assert result.returncode == 0
-    assert result.stdout.splitlines()[0].startswith("docker build ")
-    assert "--pull" in result.stdout.splitlines()[0]
+    assert result.stdout.splitlines()[0].startswith("docker buildx bake ")
+    assert "base-rocm720" in result.stdout.splitlines()[0]
 
 
 # ---------------------------------------------------------------------------

@@ -75,6 +75,22 @@ The unqualified tags (`v0.26.0`, `v0.26.0-extras`) are aliases promoted onto
 the default (rocm720) combinations. Qualified tags (`-rocm7.14.0`)
 are produced directly by their images.
 
+### Adding a new vLLM version (or new ROCm version)
+
+The matrix scales linearly from the config:
+
+- New `[bases.<id>]` entry → adds 1 `base-<id>` Bake target and ×N new
+  `[[images]]` rows (one per existing source).
+- New `[sources.<id>]` entry → adds 0 base targets and ×N new
+  `[[images]]` rows (one per existing base, if `compatible_bases` includes it).
+- New `[[images]]` row → adds 1 `vllm-<image_id>` Bake target.
+
+Adding a `v0.27.0` source therefore expands the matrix from
+`2 bases × 2 sources = 4 images` to `2 bases × 3 sources = 6 images`,
+each with its own Bake target. CI invokes `docker buildx bake` once
+with every target — buildx runs them in parallel. No source change
+is needed; the config is the single source of truth.
+
 ### Legacy tags (preserved, never overwritten)
 
 `v0.22.1` and `v0.22.1_base` predate this pipeline. They are listed in
@@ -82,20 +98,30 @@ are produced directly by their images.
 claims them (`ReservedTag`). The pipeline never rebuilds, retags, or
 repurposes them.
 
-## Engine contract: Podman first
+## Engine contract
 
-- Podman is the canonical engine. `--engine=auto` (default, or the
-  `CONTAINER_ENGINE` environment variable) picks Podman when it is on PATH,
-  else Docker, else fails with `EngineNotFound`.
-- `--engine=podman` / `--engine=docker` force a specific engine and fail if
-  it is missing.
+The CLI accepts `--engine=podman|docker|auto`. The build path forks on it:
+
+- **`--engine=docker`** (CI on GitHub Actions): writes a generated
+  `docker-bake.json` from the validated config and invokes
+  `docker buildx bake <targets> --file docker-bake.json` in a single
+  call. Buildx resolves the target graph and runs the targets in
+  parallel. Each `[bases.*]` entry becomes a `base-<id>` target; each
+  `[[images]]` entry becomes a `vllm-<image_id>` target; three
+  convenience groups (`all-bases`, `all-vllm`, `all`) select the whole
+  matrix.
+- **`--engine=podman`** (local manual builds): renders the legacy
+  `podman build --no-cache --file Dockerfile.base --build-arg ...` argv
+  directly. No bake file is written; the args are computed in-process.
+- **`--engine=auto`** (default): prefers Podman; falls back to Docker.
+  Same selection logic as before. On Podman, `podman build`; on Docker,
+  falls back to `docker buildx bake`.
 - The Dockerfiles use standard Dockerfile syntax only. There is no
   Buildx-only syntax and no Docker-specific extension; the same files build
   under both engines.
-- Command rendering is deterministic: Podman and Docker renderings differ
-  only in the executable name and Docker's `--pull` flag. `--dry-run` prints
-  the rendered commands (shell-quoted, one per line) and performs no side
-  effects — not even an engine invocation beyond a presence check.
+- `--dry-run` prints the rendered commands (shell-quoted, one per line)
+  and performs no side effects — not even an engine invocation beyond a
+  presence check.
 
 ## Runtime environment defaults
 

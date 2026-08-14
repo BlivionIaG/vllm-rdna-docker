@@ -5,3 +5,4 @@ __pycache__/
 .omo/run-continuation/
 .pytest_cache/
 *.egg-info/
+docker-bake.json

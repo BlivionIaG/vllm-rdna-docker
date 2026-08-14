@@ -33,6 +33,12 @@ from pathlib import Path
 from typing import Sequence
 
 try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
+    from tools.bake import (
+        bake_argv,
+        base_target_name,
+        render_bake_file,
+        vllm_target_name,
+    )
     from tools.engine import (
         base_build_args,
         display_path,
@@ -59,6 +65,12 @@ try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
     from tools.verify import verify_image
 except ModuleNotFoundError:  # script mode: python tools/build.py ...
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from tools.bake import (
+        bake_argv,
+        base_target_name,
+        render_bake_file,
+        vllm_target_name,
+    )
     from tools.engine import (
         base_build_args,
         display_path,
@@ -179,19 +191,7 @@ def _cmd_build_base(args: argparse.Namespace) -> int:
         + ", ".join(b.id for b in targets),
         file=sys.stderr,
     )
-    commands = [
-        (
-            b.id,
-            render_build_argv(
-                engine,
-                display_path(project_dir / BASE_DOCKERFILE),
-                _base_image_ref(registry, b),
-                base_build_args(b, resolved.architecture_list),
-                display_path(project_dir),
-            ),
-        )
-        for b in targets
-    ]
+    commands = _base_build_commands(targets, resolved, registry, project_dir, engine)
     return emit_and_run(commands, dry_run=args.dry_run)
 
 
@@ -209,7 +209,64 @@ def _cmd_build_vllm(args: argparse.Namespace) -> int:
         + ", ".join(i.id for i in targets),
         file=sys.stderr,
     )
-    commands = [
+    commands = _vllm_build_commands(targets, resolved, registry, project_dir, engine)
+    return emit_and_run(commands, dry_run=args.dry_run)
+
+
+def _base_build_commands(
+    targets: list[BaseRecord],
+    resolved: ResolvedBuild,
+    registry: dict[str, str],
+    project_dir: Path,
+    engine: str,
+) -> list[tuple[str, list[str]]]:
+    if engine == "docker":
+        bake_file = render_bake_file(resolved, registry, project_dir)
+        print(
+            f"build-base: docker buildx bake file written to "
+            f"{display_path(bake_file)}",
+            file=sys.stderr,
+        )
+        target_names = [base_target_name(b.id) for b in targets]
+        label = "all-bases" if len(targets) == len(resolved.base_records) else (
+            ", ".join(b.id for b in targets)
+        )
+        return [(label, bake_argv(target_names, bake_file))]
+    return [
+        (
+            b.id,
+            render_build_argv(
+                engine,
+                display_path(project_dir / BASE_DOCKERFILE),
+                _base_image_ref(registry, b),
+                base_build_args(b, resolved.architecture_list),
+                display_path(project_dir),
+            ),
+        )
+        for b in targets
+    ]
+
+
+def _vllm_build_commands(
+    targets: list[ImageRecord],
+    resolved: ResolvedBuild,
+    registry: dict[str, str],
+    project_dir: Path,
+    engine: str,
+) -> list[tuple[str, list[str]]]:
+    if engine == "docker":
+        bake_file = render_bake_file(resolved, registry, project_dir)
+        print(
+            f"build-vllm: docker buildx bake file written to "
+            f"{display_path(bake_file)}",
+            file=sys.stderr,
+        )
+        target_names = [vllm_target_name(i.id) for i in targets]
+        label = "all-vllm" if len(targets) == len(resolved.image_records) else (
+            ", ".join(i.id for i in targets)
+        )
+        return [(label, bake_argv(target_names, bake_file))]
+    return [
         (
             i.id,
             render_build_argv(
@@ -227,7 +284,6 @@ def _cmd_build_vllm(args: argparse.Namespace) -> int:
         )
         for i in targets
     ]
-    return emit_and_run(commands, dry_run=args.dry_run)
 
 
 #: Ordered (ARG name, OCI label key) pairs checked by the verify subcommand.
