@@ -71,6 +71,7 @@ vllm_repository = "blivioniag/vllm-rdna"
 
 [bases.rocm720]
 id = "rocm720"
+default = true
 rocm_version = "7.2.0"
 python_version = "3.12"
 pytorch_version = "2.12.0"
@@ -108,18 +109,6 @@ version = "0.26.0"
 ref = "v0.26.0-extras"
 commit = "{commit2}"
 compatible_bases = ["rocm720"]
-
-[[images]]
-id = "vllm-026-upstream-rocm720"
-base = "rocm720"
-source = "upstream026"
-tag = "v0.26.0"
-
-[[images]]
-id = "vllm-026-extras-rocm720"
-base = "rocm720"
-source = "extras026"
-tag = "v0.26.0-extras"
 """
 
 
@@ -179,10 +168,10 @@ def test_example_config_resolves_deterministic_records() -> None:
     )
     assert len(resolved.image_records) == 4
     assert {i.id for i in resolved.image_records} == {
-        "vllm-026-upstream-rocm720",
-        "vllm-026-extras-rocm720",
-        "vllm-026-upstream-rocm714",
-        "vllm-026-extras-rocm714",
+        "upstream026-rocm720",
+        "extras026-rocm720",
+        "upstream026-rocm714",
+        "extras026-rocm714",
     }
     assert len(resolved.architecture_list) == 7
 
@@ -242,7 +231,7 @@ def test_records_are_frozen_and_linked() -> None:
 def test_example_image_extras_rocm714_links() -> None:
     resolved = resolve_config(load_config(EXAMPLE_CONFIG))
     record = next(
-        r for r in resolved.image_records if r.id == "vllm-026-extras-rocm714"
+        r for r in resolved.image_records if r.id == "extras026-rocm714"
     )
     assert record.source_id == "extras026"
     assert record.base_id == "rocm714"
@@ -300,29 +289,14 @@ def test_offline_commit_matches_requires_wellformed_ref() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_unapproved_combination_refused_by_resolver_itself() -> None:
-    """rocm722 x extras026: validator rejects it AND the resolver's own gate
-    rejects it even when handed an unchecked summary (defense in depth)."""
+def test_unapproved_combination_refused_by_validator() -> None:
+    """The implicit-matrix generator refuses a source that declares
+    compatible_bases including a non-existent base."""
     data = _parse()
-    data["images"].append(
-        {
-            "id": "vllm-026-extras-rocm722",
-            "base": "rocm722",
-            "source": "extras026",
-            "tag": "v0.26.0-extras-rocm7.2.2",
-        }
-    )
-    # The validator already refuses this config...
+    data["sources"]["extras026"]["compatible_bases"].append("rocm999")
     with pytest.raises(UnapprovedCombination) as excinfo:
         validate_config(data)
-    assert excinfo.value.context == {"base": "rocm722", "source": "extras026"}
-    # ...and the resolver independently refuses to materialize the image
-    # (validate=False bypasses the validator to exercise the resolver gate).
-    unchecked = summary_from_data(data, validate=False)
-    assert isinstance(unchecked, ResolvableSummary)
-    with pytest.raises(UnapprovedCombination) as excinfo2:
-        resolve_config(unchecked)
-    assert excinfo2.value.context == {"base": "rocm722", "source": "extras026"}
+    assert excinfo.value.context == {"base": "rocm999", "source": "extras026"}
 
 
 def test_host_path_repository_rejected_before_resolution(tmp_path: Path) -> None:
@@ -368,10 +342,10 @@ def test_cli_happy_summary() -> None:
     for source_id in ("upstream026", "extras026"):
         assert source_id in result.stdout
     for image_id in (
-        "vllm-026-upstream-rocm720",
-        "vllm-026-extras-rocm720",
-        "vllm-026-upstream-rocm714",
-        "vllm-026-extras-rocm714",
+        "upstream026-rocm720",
+        "extras026-rocm720",
+        "upstream026-rocm714",
+        "extras026-rocm714",
     ):
         assert image_id in result.stdout
 
@@ -388,11 +362,11 @@ def test_cli_full_json() -> None:
 
 def test_cli_single_image_json() -> None:
     result = _run_cli(
-        "--config", str(EXAMPLE_CONFIG), "--image", "vllm-026-extras-rocm714"
+        "--config", str(EXAMPLE_CONFIG), "--image", "extras026-rocm714"
     )
     assert result.returncode == 0
     record = json.loads(result.stdout)
-    assert record["id"] == "vllm-026-extras-rocm714"
+    assert record["id"] == "extras026-rocm714"
     assert record["source_id"] == "extras026"
     assert record["base_id"] == "rocm714"
     assert record["qualified_tag"] == "v0.26.0-extras-rocm7.14.0"

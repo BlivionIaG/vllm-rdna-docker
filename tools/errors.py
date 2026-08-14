@@ -128,6 +128,16 @@ class DuplicateBaseId(ConfigError):
         super().__init__(base=base)
 
 
+class MissingDefaultBase(ConfigError):
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class MultipleDefaultBases(ConfigError):
+    def __init__(self, bases: tuple[str, ...]) -> None:
+        super().__init__(bases=list(bases))
+
+
 class DuplicateSourceId(ConfigError):
     def __init__(self, source: str) -> None:
         super().__init__(source=source)

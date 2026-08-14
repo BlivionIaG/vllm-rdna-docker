@@ -57,6 +57,7 @@ try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
         UnknownBase,
         UnknownImage,
         UnknownSource,
+        _generate_implicit_images,
         validate_config,
     )
 except ModuleNotFoundError:  # script mode: python tools/resolve.py ...
@@ -70,6 +71,7 @@ except ModuleNotFoundError:  # script mode: python tools/resolve.py ...
         UnknownBase,
         UnknownImage,
         UnknownSource,
+        _generate_implicit_images,
         validate_config,
     )
 
@@ -125,10 +127,15 @@ def summary_from_data(
     ``validate=False`` skips the validator and is reserved for tests that
     deliberately feed the resolver a broken summary to prove the resolver's
     own guard rails (e.g. ``UnapprovedCombination``) fire independently.
+    ``_generate_implicit_images`` is still called directly so the matrix
+    shape matches the validated path; the resolver's own guard rails enforce
+    the same rules without the validator's higher-level checks.
     """
     bases = {t["id"]: t for t in data.get("bases", {}).values()}
     sources = {t["id"]: t for t in data.get("sources", {}).values()}
-    images = tuple(data.get("images", []))
+    reserved_tags = frozenset(data.get("project", {}).get("reserved_tags", ()))
+    images_dict = _generate_implicit_images(bases, sources, reserved_tags)
+    images = tuple(images_dict.values())
     if validate:
         summary = validate_config(data)
         return ResolvableSummary(
@@ -144,16 +151,15 @@ def summary_from_data(
             sources=sources,
             images=images,
         )
-    # Unchecked path (tests only): derive the summary fields directly.
     return ResolvableSummary(
         architectures=tuple(data.get("architecture", {}).get("targets", ())),
         base_ids=tuple(bases),
         source_ids=tuple(sources),
-        image_ids=tuple(i["id"] for i in images),
+        image_ids=tuple(images_dict),
         base_images={bid: b.get("base_image", "") for bid, b in bases.items()},
-        image_tags={i["id"]: i.get("tag", "") for i in images},
+        image_tags={img_id: img["tag"] for img_id, img in images_dict.items()},
         aliases=dict(data.get("aliases", {})),
-        reserved_tags=tuple(data.get("project", {}).get("reserved_tags", ())),
+        reserved_tags=tuple(sorted(reserved_tags)),
         bases=bases,
         sources=sources,
         images=images,

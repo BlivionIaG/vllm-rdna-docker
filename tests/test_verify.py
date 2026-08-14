@@ -230,7 +230,7 @@ def test_verify_image_empty_sbom_rejected(
 
 def _cli_labels() -> dict[str, str]:
     resolved = resolve_config(load_config(EXAMPLE_CONFIG))
-    record = next(i for i in resolved.image_records if i.id == "vllm-026-extras-rocm714")
+    record = next(i for i in resolved.image_records if i.id == "extras026-rocm714")
     labels = verify_expected_labels(record, resolved)
     labels["org.opencontainers.image.architectures"] = ";".join(
         resolved.architecture_list
@@ -251,7 +251,7 @@ def test_cli_verify_exits_0_on_clean_image(
             "--config",
             str(EXAMPLE_CONFIG),
             "--image",
-            "vllm-026-extras-rocm714",
+            "extras026-rocm714",
             "--engine",
             "podman",
         ]
@@ -278,7 +278,7 @@ def test_cli_verify_exits_1_on_tampered_labels(
             "--config",
             str(EXAMPLE_CONFIG),
             "--image",
-            "vllm-026-extras-rocm714",
+            "extras026-rocm714",
             "--engine",
             "podman",
         ]
@@ -304,7 +304,7 @@ def test_cli_verify_exits_1_when_syft_missing(
             "--config",
             str(EXAMPLE_CONFIG),
             "--image",
-            "vllm-026-extras-rocm714",
+            "extras026-rocm714",
             "--engine",
             "podman",
         ]
@@ -328,7 +328,7 @@ def test_cli_verify_dry_run_never_invokes_engine(
             "--config",
             str(EXAMPLE_CONFIG),
             "--image",
-            "vllm-026-extras-rocm714",
+            "extras026-rocm714",
             "--engine",
             "podman",
             "--dry-run",

@@ -64,7 +64,6 @@ ALLOWED_TOP_LEVEL: frozenset[str] = frozenset(
         "registry",
         "bases",
         "sources",
-        "images",
         "aliases",
         "patches",
         "artifacts",
@@ -77,7 +76,6 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     "registry",
     "bases",
     "sources",
-    "images",
 )
 
 ALLOWED_PROJECT_FIELDS: frozenset[str] = frozenset(
@@ -90,6 +88,7 @@ ALLOWED_REGISTRY_FIELDS: frozenset[str] = frozenset(
 ALLOWED_BASE_FIELDS: frozenset[str] = frozenset(
     {
         "id",
+        "default",
         "rocm_version",
         "python_version",
         "pytorch_version",
@@ -312,6 +311,8 @@ def _validate_bases(data: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
             _validate_flash_attention(
                 base_id, entry_section, table["flash_attention"]
             )
+        if "default" in table and type(table["default"]) is not bool:
+            raise InvalidFieldType(entry_section, "default", "boolean")
         record = dict(table)
         record["patches"] = patches
         bases[base_id] = record
@@ -370,9 +371,6 @@ def _validate_sources(
         if not COMMIT_RE.match(commit):
             raise InvalidCommit(source_id, commit)
         compatible = _require_str_list(entry_section, table, "compatible_bases")
-        for base_id in compatible:
-            if base_id not in base_ids:
-                raise UnknownBase(base_id)
         sources[source_id] = dict(table)
     return sources
 
@@ -422,45 +420,49 @@ def _validate_artifacts(data: Mapping[str, Any]) -> None:
             raise InvalidChecksum(entry_section, "sha256")
 
 
-def _validate_images(
-    data: Mapping[str, Any],
+def _generate_implicit_images(
     bases: Mapping[str, Mapping[str, Any]],
     sources: Mapping[str, Mapping[str, Any]],
     reserved_tags: frozenset[str],
 ) -> dict[str, dict[str, Any]]:
-    section = "images"
-    entries = data[section]
-    if not isinstance(entries, list):
-        raise InvalidFieldType(section, section, "array of tables")
-    if not entries:
-        raise EmptySection(section)
+    default_base_ids = tuple(
+        base_id for base_id, base in bases.items() if base.get("default")
+    )
+    if not default_base_ids:
+        raise MissingDefaultBase()
+    if len(default_base_ids) > 1:
+        raise MultipleDefaultBases(default_base_ids)
+    default_base_id = default_base_ids[0]
 
     images: dict[str, dict[str, Any]] = {}
-    tags: set[str] = set()
-    for index, entry in enumerate(entries):
-        entry_section = f"images[{index}]"
-        if not isinstance(entry, dict):
-            raise InvalidFieldType(entry_section, entry_section, "table")
-        _check_known_fields(entry_section, entry, ALLOWED_IMAGE_FIELDS)
-        image_id = _require_str(entry_section, entry, "id")
-        if image_id in images:
-            raise DuplicateImageId(image_id)
-        base_ref = _require_str(entry_section, entry, "base")
-        if base_ref not in bases:
-            raise UnknownBase(base_ref)
-        source_ref = _require_str(entry_section, entry, "source")
-        if source_ref not in sources:
-            raise UnknownSource(source_ref)
-        tag = _require_str(entry_section, entry, "tag")
-        if tag in tags:
-            raise DuplicateTag(tag)
-        if tag in reserved_tags:
-            raise ReservedTag(tag)
-        compatible = sources[source_ref].get("compatible_bases", [])
-        if base_ref not in compatible:
-            raise UnapprovedCombination(base=base_ref, source=source_ref)
-        tags.add(tag)
-        images[image_id] = dict(entry)
+    seen_tags: set[str] = set()
+    for source_id, source in sources.items():
+        variant = source.get("variant")
+        version = _require_str(f"sources.{source_id}", source, "version")
+        for base_id in source.get("compatible_bases", []):
+            if base_id not in bases:
+                raise UnapprovedCombination(base=base_id, source=source_id)
+            base = bases[base_id]
+            base_tag = _require_str(f"bases.{base_id}", base, "tag")
+            qualifier = "" if base_id == default_base_id else f"-rocm{base_tag}"
+            if variant == "extras-fork":
+                tag = f"v{version}-extras{qualifier}"
+            elif variant == "upstream":
+                tag = f"v{version}{qualifier}"
+            else:
+                raise InvalidVariant(source_id, variant)
+            if tag in seen_tags:
+                raise DuplicateTag(tag)
+            if tag in reserved_tags:
+                raise ReservedTag(tag)
+            seen_tags.add(tag)
+            image_id = f"{source_id}-{base_id}"
+            images[image_id] = {
+                "id": image_id,
+                "base": base_id,
+                "source": source_id,
+                "tag": tag,
+            }
     return images
 
 
@@ -480,8 +482,6 @@ def _validate_aliases(
             raise ReservedTag(alias)
         if target not in images:
             raise UnknownImage(target)
-        if images[target].get("tag") != alias:
-            raise AliasTagMismatch(alias=alias, image=target)
         aliases[alias] = target
     return aliases
 
@@ -523,7 +523,7 @@ def validate_config(data: Mapping[str, Any]) -> ConfigSummary:
                 raise UnknownPatch(patch_ref)
     _validate_artifacts(data)
     sources = _validate_sources(data, base_ids)
-    images = _validate_images(data, bases, sources, reserved_tags)
+    images = _generate_implicit_images(bases, sources, reserved_tags)
     aliases = _validate_aliases(data, images, reserved_tags)
 
     return ConfigSummary(

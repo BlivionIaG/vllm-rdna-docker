@@ -18,12 +18,10 @@ from pathlib import Path
 import pytest
 
 from tools.validate import (
-    AliasTagMismatch,
     ConfigError,
     ConfigSummary,
     DuplicateArchitecture,
     DuplicateSourceId,
-    DuplicateTag,
     HostPathNotAllowed,
     InvalidCommit,
     InvalidDigest,
@@ -54,7 +52,6 @@ VALIDATE_PY = SUBPROJECT / "tools" / "validate.py"
 
 #: fixture name -> (expected error type, expected context subset)
 INVALID_FIXTURES = [
-    ("invalid-unknown-source.toml", UnknownSource, {"source": "extras027"}),
     (
         "invalid-duplicate-source-id.toml",
         DuplicateSourceId,
@@ -94,6 +91,7 @@ vllm_repository = "blivioniag/vllm-rdna"
 
 [bases.rocm720]
 id = "rocm720"
+default = true
 rocm_version = "7.2.0"
 python_version = "3.12"
 pytorch_version = "2.12.0"
@@ -111,12 +109,6 @@ version = "0.26.0"
 ref = "v0.26.0"
 commit = "{commit}"
 compatible_bases = ["rocm720"]
-
-[[images]]
-id = "vllm-026-upstream-rocm720"
-base = "rocm720"
-source = "upstream026"
-tag = "v0.26.0"
 """
 
 GOOD_DIGEST = "a1b2c3d4e5f60718293a4b5c6d7e8f900a1b2c3d4e5f60718293a4b5c6d7e8f9"
@@ -150,12 +142,12 @@ def test_valid_fixture_passes() -> None:
     assert summary.base_ids == ("rocm720",)
     assert summary.source_ids == ("upstream026", "extras026")
     assert summary.image_ids == (
-        "vllm-026-upstream-rocm720",
-        "vllm-026-extras-rocm720",
+        "upstream026-rocm720",
+        "extras026-rocm720",
     )
     assert summary.aliases == {
-        "v0.26.0": "vllm-026-upstream-rocm720",
-        "v0.26.0-extras": "vllm-026-extras-rocm720",
+        "v0.26.0": "upstream026-rocm720",
+        "v0.26.0-extras": "extras026-rocm720",
     }
 
 
@@ -166,17 +158,17 @@ def test_example_config_passes_and_has_expected_shape() -> None:
     assert set(summary.base_ids) == {"rocm720", "rocm714"}
     assert set(summary.source_ids) == {"upstream026", "extras026"}
     assert set(summary.image_ids) == {
-        "vllm-026-upstream-rocm720",
-        "vllm-026-extras-rocm720",
-        "vllm-026-upstream-rocm714",
-        "vllm-026-extras-rocm714",
+        "upstream026-rocm720",
+        "extras026-rocm720",
+        "upstream026-rocm714",
+        "extras026-rocm714",
     }
-    assert summary.image_tags["vllm-026-upstream-rocm720"] == "v0.26.0"
-    assert summary.image_tags["vllm-026-extras-rocm720"] == "v0.26.0-extras"
-    assert summary.image_tags["vllm-026-upstream-rocm714"] == "v0.26.0-rocm7.14.0"
+    assert summary.image_tags["upstream026-rocm720"] == "v0.26.0"
+    assert summary.image_tags["extras026-rocm720"] == "v0.26.0-extras"
+    assert summary.image_tags["upstream026-rocm714"] == "v0.26.0-rocm7.14.0"
     assert summary.aliases == {
-        "v0.26.0": "vllm-026-upstream-rocm720",
-        "v0.26.0-extras": "vllm-026-extras-rocm720",
+        "v0.26.0": "upstream026-rocm720",
+        "v0.26.0-extras": "extras026-rocm720",
     }
     assert set(summary.reserved_tags) == {"v0.22.1", "v0.22.1_base"}
 
@@ -245,7 +237,7 @@ def test_cli_accepts_example_config() -> None:
     result = _run_cli(EXAMPLE_CONFIG)
     assert result.returncode == 0
     assert "OK:" in result.stdout
-    assert "vllm-026-upstream-rocm720" in result.stdout
+    assert "upstream026-rocm720" in result.stdout
 
 
 def test_cli_accepts_valid_fixture() -> None:
@@ -370,48 +362,17 @@ def test_invalid_digest() -> None:
         validate_config(data)
 
 
-def test_unknown_base_in_image() -> None:
-    data = _parse()
-    data["images"][0]["base"] = "rocm799"
-    with pytest.raises(UnknownBase) as excinfo:
-        validate_config(data)
-    assert excinfo.value.context["base"] == "rocm799"
-
-
 def test_compatible_bases_rejects_unknown_base() -> None:
     data = _parse()
     data["sources"]["upstream026"]["compatible_bases"] = ["rocm799"]
-    with pytest.raises(UnknownBase) as excinfo:
+    with pytest.raises(UnapprovedCombination) as excinfo:
         validate_config(data)
-    assert excinfo.value.context["base"] == "rocm799"
-
-
-def test_duplicate_tag() -> None:
-    data = _parse()
-    data["images"].append(
-        {
-            "id": "vllm-026-upstream-rocm720-copy",
-            "base": "rocm720",
-            "source": "upstream026",
-            "tag": "v0.26.0",
-        }
-    )
-    with pytest.raises(DuplicateTag) as excinfo:
-        validate_config(data)
-    assert excinfo.value.context["tag"] == "v0.26.0"
-
-
-def test_reserved_tag_on_image() -> None:
-    data = _parse()
-    data["images"][0]["tag"] = "v0.22.1"
-    with pytest.raises(ReservedTag) as excinfo:
-        validate_config(data)
-    assert excinfo.value.context["tag"] == "v0.22.1"
+    assert excinfo.value.context == {"base": "rocm799", "source": "upstream026"}
 
 
 def test_reserved_tag_on_alias() -> None:
     data = _parse()
-    data["aliases"] = {"v0.22.1": "vllm-026-upstream-rocm720"}
+    data["aliases"] = {"v0.22.1": "upstream026-rocm720"}
     with pytest.raises(ReservedTag):
         validate_config(data)
 
@@ -422,14 +383,6 @@ def test_alias_to_unknown_image() -> None:
     with pytest.raises(UnknownImage) as excinfo:
         validate_config(data)
     assert excinfo.value.context["image"] == "no-such-image"
-
-
-def test_alias_must_match_image_tag() -> None:
-    data = _parse()
-    data["aliases"] = {"latest": "vllm-026-upstream-rocm720"}
-    with pytest.raises(AliasTagMismatch) as excinfo:
-        validate_config(data)
-    assert excinfo.value.context["alias"] == "latest"
 
 
 def test_host_path_rejected_in_repository() -> None:

@@ -45,10 +45,11 @@ Key invariants:
   `gfx1150`, `gfx1151`, `gfx1200`, `gfx1201`. One portable image; there is
   **no primary architecture** (a `primary` key at any nesting level is a
   validation error).
-- **Explicit matrix** — no automatic Cartesian product. Adding a base or a
-  source changes nothing until an `[[images]]` entry approves the
-  combination, and the base must also appear in the source's
-  `compatible_bases`.
+- **Implicit matrix** — the image set is generated as every
+  `(source, base)` pair where `base ∈ source.compatible_bases`. Adding a
+  `[bases.*]` or `[sources.*]` entry extends the matrix automatically; a
+  source whose `compatible_bases` references an undefined base is
+  rejected.
 - **Immutability** — sources pin a full 40-hex commit; bases pin their own
   `base_image` plus a full `sha256:` digest; artifacts pin a `sha256`
   checksum.
@@ -60,7 +61,7 @@ Key invariants:
 | Repository | Content |
 |------------|---------|
 | `docker.io/blivioniag/rocm-rdna` | ROCm/RDNA base images, one per `[bases.*]` entry |
-| `docker.io/blivioniag/vllm-rdna` | vLLM application images, one per `[[images]]` entry |
+| `docker.io/blivioniag/vllm-rdna` | vLLM application images, one per `(source, base)` pair |
 
 Current tags (from `config/rocm-7.2.0.toml`):
 
@@ -80,10 +81,11 @@ are produced directly by their images.
 The matrix scales linearly from the config:
 
 - New `[bases.<id>]` entry → adds 1 `base-<id>` Bake target and ×N new
-  `[[images]]` rows (one per existing source).
+  `vllm-<source>-<base>` Bake targets (one per existing source that
+  includes it in `compatible_bases`).
 - New `[sources.<id>]` entry → adds 0 base targets and ×N new
-  `[[images]]` rows (one per existing base, if `compatible_bases` includes it).
-- New `[[images]]` row → adds 1 `vllm-<image_id>` Bake target.
+  `vllm-<source>-<base>` Bake targets (one per existing base that
+  appears in the source's `compatible_bases`).
 
 Adding a `v0.27.0` source therefore expands the matrix from
 `2 bases × 2 sources = 4 images` to `2 bases × 3 sources = 6 images`,
@@ -107,7 +109,8 @@ The CLI accepts `--engine=podman|docker|auto`. The build path forks on it:
   `docker buildx bake <targets> --file docker-bake.json` in a single
   call. Buildx resolves the target graph and runs the targets in
   parallel. Each `[bases.*]` entry becomes a `base-<id>` target; each
-  `[[images]]` entry becomes a `vllm-<image_id>` target; three
+  auto-generated `(source, base)` pair becomes a `vllm-<source>-<base>`
+  target; three
   convenience groups (`all-bases`, `all-vllm`, `all`) select the whole
   matrix.
 - **`--engine=podman`** (local manual builds): renders the legacy
@@ -218,9 +221,8 @@ commands run from the repository root.
      `base_digest` (per-base pinning; there is no project-level default);
    - add or edit a `[sources.*]` entry with a `ref` and its immutable
      40-hex `commit`;
-   - add an `[[images]]` entry for each new approved base x source
-     combination (and an `[aliases]` entry if the combination should claim
-     an unqualified tag).
+   - add an `[aliases]` entry if the new default-base combination should
+     claim an unqualified tag.
 2. **Run the unit suite locally:**
    ```bash
    python -m pytest vllm-rdna-docker/tests/ -q
@@ -234,7 +236,7 @@ commands run from the repository root.
    ```bash
    python vllm-rdna-docker/tools/resolve.py \
      --config vllm-rdna-docker/config/rocm-7.2.0.toml \
-     [--image vllm-026-extras-rocm720] [--json]
+     [--image extras026-rocm720] [--json]
    ```
 5. **Build the base image** — on the external Podman runner:
    ```bash
@@ -246,14 +248,14 @@ commands run from the repository root.
    ```bash
    python vllm-rdna-docker/tools/build.py build-vllm \
      --config vllm-rdna-docker/config/rocm-7.2.0.toml \
-     --image vllm-026-extras-rocm720 [--dry-run]
+     --image extras026-rocm720 [--dry-run]
    ```
 7. **Verify the image** — on the external Podman runner (OCI labels,
    architecture metadata, digest identity, non-empty SPDX SBOM):
    ```bash
    python vllm-rdna-docker/tools/build.py verify \
      --config vllm-rdna-docker/config/rocm-7.2.0.toml \
-     --image vllm-026-extras-rocm720
+     --image extras026-rocm720
    ```
 8. **Publish** — on the external Podman runner, with `REGISTRY_USER` and
    `REGISTRY_TOKEN` set in the environment (pushes the immutable tag; never
@@ -261,7 +263,7 @@ commands run from the repository root.
    ```bash
    python vllm-rdna-docker/tools/build.py publish \
      --config vllm-rdna-docker/config/rocm-7.2.0.toml \
-     --image vllm-026-extras-rocm720
+     --image extras026-rocm720
    ```
 9. **Promote aliases** — point the unqualified tag at the verified digest
    (pull + tag + push; never a rebuild):
@@ -324,7 +326,7 @@ Publication is immutable; rollback never rebuilds.
    Each base pins its upstream image independently.
 2. Add the new base id to the `compatible_bases` list of every source that
    is approved to build on it.
-3. Add `[[images]]` entries for the new approved combinations, with
+3. Add `[bases.<id>]` and `[sources.<id>]` entries (the matrix extends itself)
    qualified tags (for example `v0.26.0-rocm7.x`).
 4. Run the release procedure above (validate, resolve, then build / verify /
    publish on the external runner).
@@ -336,9 +338,8 @@ Publication is immutable; rollback never rebuilds.
    `v0.27.0-extras`), and the immutable 40-hex `commit` the ref must resolve
    to.
 2. Set `compatible_bases` to the base ids the fork is approved against.
-3. Add `[[images]]` entries for the new combinations. Public tags are
-   declared explicitly in the image entries — they are never derived from
-   branch names.
+3. The matrix extends itself; add an `[aliases]` entry if the new
+   default-base combination should claim an unqualified tag.
 4. Run the release procedure above.
 
 ## Evidence

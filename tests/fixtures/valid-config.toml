@@ -1,5 +1,6 @@
 # Minimal complete valid configuration. Exercises every required section plus
-# the optional aliases/patches/artifacts sections.
+# the optional aliases/patches/artifacts sections. Sources are filtered by
+# their compatible_bases to form the implicit image matrix.
 
 [project]
 name = "vllm-rdna-docker"
@@ -17,6 +18,7 @@ vllm_repository = "blivioniag/vllm-rdna"
 
 [bases.rocm720]
 id = "rocm720"
+default = true
 rocm_version = "7.2.0"
 python_version = "3.12"
 pytorch_version = "2.12.0"
@@ -45,21 +47,9 @@ ref = "v0.26.0-extras"
 commit = "9f3b6d1a8c5e0274b6d8a0c2e4f6a8c0d2e4f6a8"
 compatible_bases = ["rocm720"]
 
-[[images]]
-id = "vllm-026-upstream-rocm720"
-base = "rocm720"
-source = "upstream026"
-tag = "v0.26.0"
-
-[[images]]
-id = "vllm-026-extras-rocm720"
-base = "rocm720"
-source = "extras026"
-tag = "v0.26.0-extras"
-
 [aliases]
-"v0.26.0" = "vllm-026-upstream-rocm720"
-"v0.26.0-extras" = "vllm-026-extras-rocm720"
+"v0.26.0" = "upstream026-rocm720"
+"v0.26.0-extras" = "extras026-rocm720"
 
 [patches.rccl-rdna-tuning-index]
 id = "rccl-rdna-tuning-index"

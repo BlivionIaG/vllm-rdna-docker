@@ -82,15 +82,15 @@ def test_validate_subcommand_example_config() -> None:
     assert "OK:" in result.stdout
     for base_id in ("rocm720", "rocm714"):
         assert base_id in result.stdout
-    for image_id in ("vllm-026-extras-rocm714",):
+    for image_id in ("extras026-rocm714",):
         assert image_id in result.stdout
 
 
 def test_validate_subcommand_invalid_config_fails() -> None:
-    fixture = SUBPROJECT / "tests" / "fixtures" / "invalid-unknown-source.toml"
+    fixture = SUBPROJECT / "tests" / "fixtures" / "invalid-unapproved-combination.toml"
     result = _run_cli("validate", "--config", str(fixture))
     assert result.returncode == 1
-    assert "UnknownSource" in result.stderr
+    assert "UnapprovedCombination" in result.stderr
 
 
 def test_resolve_subcommand_json() -> None:
@@ -182,7 +182,7 @@ def test_build_vllm_extras_rocm714_dry_run() -> None:
         "--config", str(EXAMPLE_CONFIG),
         "--engine=podman",
         "--dry-run",
-        "--image", "vllm-026-extras-rocm714",
+        "--image", "extras026-rocm714",
     )
     assert result.returncode == 0
     lines = [line for line in result.stdout.splitlines() if line.strip()]
@@ -207,7 +207,7 @@ def test_build_vllm_upstream_rocm720_torch_backend_dry_run() -> None:
         "--config", str(EXAMPLE_CONFIG),
         "--engine=podman",
         "--dry-run",
-        "--image", "vllm-026-upstream-rocm720",
+        "--image", "upstream026-rocm720",
     )
     assert result.returncode == 0
     lines = [line for line in result.stdout.splitlines() if line.strip()]
@@ -264,7 +264,7 @@ def test_podman_docker_rendering_differs_only_in_executable_and_pull() -> None:
 
 def test_vllm_rendering_arg_lists_identical_across_engines() -> None:
     resolved = resolve_config(load_config(EXAMPLE_CONFIG))
-    image = next(i for i in resolved.image_records if i.id == "vllm-026-extras-rocm714")
+    image = next(i for i in resolved.image_records if i.id == "extras026-rocm714")
     args = vllm_build_args(
         image,
         "docker.io/blivioniag/rocm-rdna:7.14.0",
@@ -607,11 +607,11 @@ def test_dry_run_never_invokes_subprocess(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_placeholders_refuse_invalid_config() -> None:
     """Even the pipeline subcommands gate on validate+resolve."""
-    fixture = SUBPROJECT / "tests" / "fixtures" / "invalid-unknown-source.toml"
+    fixture = SUBPROJECT / "tests" / "fixtures" / "invalid-unapproved-combination.toml"
     for subcommand in ("verify", "publish", "promote"):
         result = _run_cli(subcommand, "--config", str(fixture))
         assert result.returncode == 1, subcommand
-        assert "UnknownSource" in result.stderr
+        assert "UnapprovedCombination" in result.stderr
 
 
 # ---------------------------------------------------------------------------

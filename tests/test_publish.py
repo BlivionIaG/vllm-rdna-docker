@@ -263,7 +263,7 @@ def test_cli_publish_single_image_dry_run(
         [
             "publish",
             "--config", str(EXAMPLE_CONFIG),
-            "--image", "vllm-026-upstream-rocm714",
+            "--image", "upstream026-rocm714",
             "--engine", "podman",
             "--dry-run",
         ]
@@ -314,7 +314,7 @@ def test_cli_publish_live_without_credentials_exits_1_before_push(
         [
             "publish",
             "--config", str(EXAMPLE_CONFIG),
-            "--image", "vllm-026-upstream-rocm720",
+            "--image", "upstream026-rocm720",
             "--engine", "podman",
         ]
     )

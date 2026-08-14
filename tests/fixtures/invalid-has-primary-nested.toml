@@ -17,12 +17,14 @@ vllm_repository = "blivioniag/vllm-rdna"
 
 [bases.rocm720]
 id = "rocm720"
+default = true
 rocm_version = "7.2.0"
 python_version = "3.12"
 pytorch_version = "2.12.0"
 triton_version = "3.6.0"
 base_image = "rocm/dev-ubuntu-22.04:7.2.0-complete"
 base_digest = "sha256:a1b2c3d4e5f60718293a4b5c6d7e8f900a1b2c3d4e5f60718293a4b5c6d7e8f9"
+pytorch_index_url = "https://download.pytorch.org/whl/rocm7.2"
 tag = "7.2.0"
 primary = "gfx1030"
 
@@ -34,9 +36,3 @@ version = "0.26.0"
 ref = "v0.26.0"
 commit = "4a7c2e91d0b8536f1c9e2d4a6b8c0e2f4a6c8e0b"
 compatible_bases = ["rocm720"]
-
-[[images]]
-id = "vllm-026-upstream-rocm720"
-base = "rocm720"
-source = "upstream026"
-tag = "v0.26.0"

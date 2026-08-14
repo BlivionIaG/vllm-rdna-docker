@@ -34,6 +34,7 @@ vllm_repository = "blivioniag/vllm-rdna"
 
 [bases.rocm720]
 id = "rocm720"
+default = true
 rocm_version = "7.2.0"
 python_version = "3.12"
 pytorch_version = "2.12.0"
@@ -91,41 +92,9 @@ ref = "v0.26.0-extras"
 commit = "9f3b6d1a8c5e0274b6d8a0c2e4f6a8c0d2e4f6a8"
 compatible_bases = ["rocm720", "rocm714"]
 
-# ---------------------------------------------------------------------------
-# Images — the explicit approved matrix. No automatic Cartesian product:
-# adding a base or a source changes nothing until an [[images]] entry is added.
-# ---------------------------------------------------------------------------
-
-# Default combinations (rocm720) produce the unqualified tags.
-[[images]]
-id = "vllm-026-upstream-rocm720"
-base = "rocm720"
-source = "upstream026"
-tag = "v0.26.0"
-
-[[images]]
-id = "vllm-026-extras-rocm720"
-base = "rocm720"
-source = "extras026"
-tag = "v0.26.0-extras"
-
-# Alternate-base combinations produce qualified tags.
-[[images]]
-id = "vllm-026-upstream-rocm714"
-base = "rocm714"
-source = "upstream026"
-tag = "v0.26.0-rocm7.14.0"
-
-[[images]]
-id = "vllm-026-extras-rocm714"
-base = "rocm714"
-source = "extras026"
-tag = "v0.26.0-extras-rocm7.14.0"
-
-# Unqualified aliases point only at the declared default combinations.
 [aliases]
-"v0.26.0" = "vllm-026-upstream-rocm720"
-"v0.26.0-extras" = "vllm-026-extras-rocm720"
+"v0.26.0" = "upstream026-rocm720"
+"v0.26.0-extras" = "extras026-rocm720"
 
 # ---------------------------------------------------------------------------
 # EXPERIMENTAL sections (schema.md): patches and external artifacts.
