@@ -26,7 +26,6 @@ import argparse
 import re
 import sys
 import tomllib
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -34,9 +33,11 @@ from typing import Any, Mapping, Sequence
 # ``from tools.validate import ConfigError, ReservedTag, ...`` keeps working.
 try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
     from tools.errors import *  # noqa: F401,F403
+    from tools.records import ConfigSummary
 except ModuleNotFoundError:  # script mode: python tools/validate.py ...
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from tools.errors import *  # noqa: F401,F403
+    from tools.records import ConfigSummary
 
 # ---------------------------------------------------------------------------
 # Schema constants (see config/schema.md — keep both in sync in one change)
@@ -139,26 +140,6 @@ FORBIDDEN_KEY = "primary"
 
 # ---------------------------------------------------------------------------
 # Validation summary (returned on success)
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class ConfigSummary:
-    """Structured view of a validated config, for tests and later todos."""
-
-    architectures: tuple[str, ...]
-    base_ids: tuple[str, ...]
-    source_ids: tuple[str, ...]
-    image_ids: tuple[str, ...]
-    base_images: Mapping[str, str] = field(default_factory=dict)
-    image_tags: Mapping[str, str] = field(default_factory=dict)
-    aliases: Mapping[str, str] = field(default_factory=dict)
-    reserved_tags: tuple[str, ...] = ()
-
-
-# ---------------------------------------------------------------------------
-# Field helpers
-# ---------------------------------------------------------------------------
 
 
 def _check_known_fields(

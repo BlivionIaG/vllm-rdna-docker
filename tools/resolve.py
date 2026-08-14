@@ -48,10 +48,10 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
+    from tools.records import BaseRecord, ConfigSummary, ImageRecord, ResolvedBuild, SourceRecord
     from tools.validate import (
         COMMIT_RE,
         ConfigError,
-        ConfigSummary,
         MalformedTOML,
         UnapprovedCombination,
         UnknownBase,
@@ -61,10 +61,10 @@ try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
     )
 except ModuleNotFoundError:  # script mode: python tools/resolve.py ...
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from tools.records import BaseRecord, ConfigSummary, ImageRecord, ResolvedBuild, SourceRecord
     from tools.validate import (
         COMMIT_RE,
         ConfigError,
-        ConfigSummary,
         MalformedTOML,
         UnapprovedCombination,
         UnknownBase,
@@ -89,73 +89,6 @@ LS_REMOTE_TIMEOUT_S = 30
 
 #: Schema tag embedded in the canonical JSON that feeds config_hash.
 CANONICAL_SCHEMA = "vllm-rdna-docker/resolved-build/v1"
-
-
-# ---------------------------------------------------------------------------
-# Resolved records
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class BaseRecord:
-    """Immutable view of one ``[bases.*]`` entry."""
-
-    id: str
-    rocm_version: str
-    python_version: str
-    pytorch_version: str
-    triton_version: str
-    base_image: str
-    base_digest: str
-    pytorch_index_url: str
-    tag: str
-    patches: tuple[str, ...] = ()
-    flash_attention: Mapping[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class SourceRecord:
-    """Immutable view of one ``[sources.*]`` entry plus its commit verdict."""
-
-    id: str
-    variant: str
-    repository: str
-    version: str
-    ref: str
-    resolved_commit: str
-    configured_commit: str
-    commit_matches: bool
-    compatible_bases: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ImageRecord:
-    """One approved base x source combination, fully linked.
-
-    This is the unit consumed by Todo 3+ (Dockerfiles / build CLI): it carries
-    the literal ``tag``/``qualified_tag`` plus direct references to the
-    resolved base and source records, so no downstream step needs to re-join
-    anything.
-    """
-
-    id: str
-    base_id: str
-    source_id: str
-    tag: str
-    qualified_tag: str
-    base_record: BaseRecord
-    source_record: SourceRecord
-
-
-@dataclass(frozen=True)
-class ResolvedBuild:
-    """Deterministic build description for a whole validated config."""
-
-    architecture_list: tuple[str, ...]
-    base_records: tuple[BaseRecord, ...]
-    source_records: tuple[SourceRecord, ...]
-    image_records: tuple[ImageRecord, ...]
-    config_hash: str
 
 
 # ---------------------------------------------------------------------------
