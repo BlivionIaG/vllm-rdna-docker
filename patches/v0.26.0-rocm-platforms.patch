@@ -1,0 +1,60 @@
+diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
+index 4b182ae..7da9ea8 100644
+--- a/vllm/platforms/rocm.py
++++ b/vllm/platforms/rocm.py
+@@ -194,11 +194,7 @@ def _get_gcn_arch() -> str:
+         return _query_gcn_arch_from_amdsmi()
+     except Exception as e:
+         logger.debug("Failed to get GCN arch via amdsmi: %s", e)
+-        logger.warning_once(
+-            "Failed to get GCN arch via amdsmi, falling back to torch.cuda. "
+-            "This will initialize CUDA and may cause "
+-            "issues if CUDA_VISIBLE_DEVICES is not set yet."
+-        )
++        # patched: skip warning to avoid circular import
+     # Ultimate fallback: use torch.cuda (will initialize CUDA)
+     return torch.cuda.get_device_properties("cuda").gcnArchName
+ 
+@@ -206,18 +202,30 @@ def _get_gcn_arch() -> str:
+ # Resolve once at module load. Uses amdsmi (no CUDA init) so Ray workers
+ # can still set CUDA_VISIBLE_DEVICES after import.
+ # These are plain Python bools — fully torch.compile/Dynamo safe.
+-_GCN_ARCH = _get_gcn_arch()
+-
+-_ON_GFX1X = any(arch in _GCN_ARCH for arch in ["gfx11", "gfx12"])
+-_ON_GFX11 = "gfx11" in _GCN_ARCH
+-_ON_GFX1100 = "gfx1100" in _GCN_ARCH
+-_ON_GFX1151 = "gfx1151" in _GCN_ARCH
+-_ON_GFX12X = any(arch in _GCN_ARCH for arch in ["gfx12"])
+-_ON_MI3XX = any(arch in _GCN_ARCH for arch in ["gfx942", "gfx950"])
+-_ON_GFX9 = any(arch in _GCN_ARCH for arch in ["gfx90a", "gfx942", "gfx950"])
+-_ON_GFX90A = "gfx90a" in _GCN_ARCH
+-_ON_GFX942 = "gfx942" in _GCN_ARCH
+-_ON_GFX950 = "gfx950" in _GCN_ARCH
++try:
++    _GCN_ARCH = _get_gcn_arch()
++    _ON_GFX1X = any(arch in _GCN_ARCH for arch in ["gfx11", "gfx12"])
++    _ON_GFX11 = "gfx11" in _GCN_ARCH
++    _ON_GFX1100 = "gfx1100" in _GCN_ARCH
++    _ON_GFX1151 = "gfx1151" in _GCN_ARCH
++    _ON_GFX12X = any(arch in _GCN_ARCH for arch in ["gfx12"])
++    _ON_MI3XX = any(arch in _GCN_ARCH for arch in ["gfx942", "gfx950"])
++    _ON_GFX9 = any(arch in _GCN_ARCH for arch in ["gfx90a", "gfx942", "gfx950"])
++    _ON_GFX90A = "gfx90a" in _GCN_ARCH
++    _ON_GFX942 = "gfx942" in _GCN_ARCH
++    _ON_GFX950 = "gfx950" in _GCN_ARCH
++except Exception:
++    _GCN_ARCH = ""
++    _ON_GFX1X = False
++    _ON_GFX11 = False
++    _ON_GFX1100 = False
++    _ON_GFX1151 = False
++    _ON_GFX12X = False
++    _ON_MI3XX = False
++    _ON_GFX9 = False
++    _ON_GFX90A = False
++    _ON_GFX942 = False
++    _ON_GFX950 = False
+ 
+ 
+ def _capability_from_gcn_arch(gcn_arch: str) -> tuple[int, int] | None:
