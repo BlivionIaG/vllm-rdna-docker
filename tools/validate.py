@@ -30,6 +30,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+# All named errors live in tools.errors and are re-exported here so existing
+# ``from tools.validate import ConfigError, ReservedTag, ...`` keeps working.
+try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
+    from tools.errors import *  # noqa: F401,F403
+except ModuleNotFoundError:  # script mode: python tools/validate.py ...
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from tools.errors import *  # noqa: F401,F403
+
 # ---------------------------------------------------------------------------
 # Schema constants (see config/schema.md — keep both in sync in one change)
 # ---------------------------------------------------------------------------
@@ -127,185 +135,6 @@ HOST_PATH_PREFIXES: tuple[str, ...] = ("/home/", "/root/", "/Users/")
 #: Key forbidden at every nesting level (case-insensitive).
 FORBIDDEN_KEY = "primary"
 
-
-# ---------------------------------------------------------------------------
-# Named errors
-# ---------------------------------------------------------------------------
-
-
-class ConfigError(Exception):
-    """Base class for all named configuration errors.
-
-    ``str(err)`` renders ``Name(field=value, ...)``; ``err.context`` carries
-    the structured fields for programmatic handling.
-    """
-
-    def __init__(self, **context: Any) -> None:
-        super().__init__(context)
-        self.context = context
-
-    @property
-    def name(self) -> str:
-        return type(self).__name__
-
-    def __str__(self) -> str:
-        inner = ", ".join(f"{k}={v!r}" for k, v in self.context.items())
-        return f"{self.name}({inner})"
-
-
-class MalformedTOML(ConfigError):
-    def __init__(self, detail: str) -> None:
-        super().__init__(detail=detail)
-
-
-class UnknownSection(ConfigError):
-    def __init__(self, section: str) -> None:
-        super().__init__(section=section)
-
-
-class MissingSection(ConfigError):
-    def __init__(self, section: str) -> None:
-        super().__init__(section=section)
-
-
-class EmptySection(ConfigError):
-    def __init__(self, section: str) -> None:
-        super().__init__(section=section)
-
-
-class UnknownField(ConfigError):
-    def __init__(self, section: str, field_: str) -> None:
-        super().__init__(section=section, field=field_)
-
-
-class MissingField(ConfigError):
-    def __init__(self, section: str, field_: str) -> None:
-        super().__init__(section=section, field=field_)
-
-
-class InvalidFieldType(ConfigError):
-    def __init__(self, section: str, field_: str, expected: str) -> None:
-        super().__init__(section=section, field=field_, expected=expected)
-
-
-class InvalidSchemaVersion(ConfigError):
-    def __init__(self, found: Any) -> None:
-        super().__init__(found=found)
-
-
-class PrimaryArchitectureNotAllowed(ConfigError):
-    def __init__(self, path: str = "") -> None:
-        super().__init__(path=path)
-
-
-class MissingArchitecture(ConfigError):
-    def __init__(self, arch: str) -> None:
-        super().__init__(arch=arch)
-
-
-class UnexpectedArchitecture(ConfigError):
-    def __init__(self, arch: str) -> None:
-        super().__init__(arch=arch)
-
-
-class DuplicateArchitecture(ConfigError):
-    def __init__(self, arch: str) -> None:
-        super().__init__(arch=arch)
-
-
-class DuplicateBaseId(ConfigError):
-    def __init__(self, base: str) -> None:
-        super().__init__(base=base)
-
-
-class DuplicateSourceId(ConfigError):
-    def __init__(self, source: str) -> None:
-        super().__init__(source=source)
-
-
-class DuplicateImageId(ConfigError):
-    def __init__(self, image: str) -> None:
-        super().__init__(image=image)
-
-
-class DuplicatePatchId(ConfigError):
-    def __init__(self, patch: str) -> None:
-        super().__init__(patch=patch)
-
-
-class DuplicateArtifactId(ConfigError):
-    def __init__(self, artifact: str) -> None:
-        super().__init__(artifact=artifact)
-
-
-class UnknownBase(ConfigError):
-    def __init__(self, base: str) -> None:
-        super().__init__(base=base)
-
-
-class UnknownSource(ConfigError):
-    def __init__(self, source: str) -> None:
-        super().__init__(source=source)
-
-
-class UnknownImage(ConfigError):
-    def __init__(self, image: str) -> None:
-        super().__init__(image=image)
-
-
-class UnknownPatch(ConfigError):
-    def __init__(self, patch: str) -> None:
-        super().__init__(patch=patch)
-
-
-class InvalidVariant(ConfigError):
-    def __init__(self, source: str, variant: str) -> None:
-        super().__init__(source=source, variant=variant)
-
-
-class InvalidFlashAttentionInstall(ConfigError):
-    def __init__(self, base: str, install: str) -> None:
-        super().__init__(base=base, install=install)
-
-
-class InvalidCommit(ConfigError):
-    def __init__(self, source: str, commit: str) -> None:
-        super().__init__(source=source, commit=commit)
-
-
-class InvalidDigest(ConfigError):
-    def __init__(self, base: str, digest: str) -> None:
-        super().__init__(base=base, digest=digest)
-
-
-class InvalidChecksum(ConfigError):
-    def __init__(self, section: str, field_: str) -> None:
-        super().__init__(section=section, field=field_)
-
-
-class UnapprovedCombination(ConfigError):
-    def __init__(self, base: str, source: str) -> None:
-        super().__init__(base=base, source=source)
-
-
-class DuplicateTag(ConfigError):
-    def __init__(self, tag: str) -> None:
-        super().__init__(tag=tag)
-
-
-class ReservedTag(ConfigError):
-    def __init__(self, tag: str) -> None:
-        super().__init__(tag=tag)
-
-
-class AliasTagMismatch(ConfigError):
-    def __init__(self, alias: str, image: str) -> None:
-        super().__init__(alias=alias, image=image)
-
-
-class HostPathNotAllowed(ConfigError):
-    def __init__(self, section: str, field_: str, value: str) -> None:
-        super().__init__(section=section, field=field_, value=value)
 
 
 # ---------------------------------------------------------------------------

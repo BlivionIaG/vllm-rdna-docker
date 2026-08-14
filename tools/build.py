@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
-    from tools.cli_errors import CommandFailed, EngineNotFound
+    from tools.errors import CommandFailed, EngineNotFound
     from tools.publish import (
         promote_alias,
         publish_image,
@@ -73,7 +73,7 @@ try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
     from tools.verify import verify_image
 except ModuleNotFoundError:  # script mode: python tools/build.py ...
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from tools.cli_errors import CommandFailed, EngineNotFound
+    from tools.errors import CommandFailed, EngineNotFound
     from tools.publish import (
         promote_alias,
         publish_image,

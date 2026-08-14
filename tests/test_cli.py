@@ -35,7 +35,7 @@ from tools.build import (
     select_engine,
     vllm_build_args,
 )
-from tools.cli_errors import CommandFailed, EngineNotFound
+from tools.errors import CommandFailed, EngineNotFound
 from tools.resolve import load_config, resolve_config
 
 SUBPROJECT = Path(__file__).resolve().parent.parent

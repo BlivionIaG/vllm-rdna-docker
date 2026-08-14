@@ -38,10 +38,10 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 try:  # pytest / package mode (vllm-rdna-docker/ on sys.path)
-    from tools.validate import ConfigError
+    from tools.errors import CREDENTIAL_ENV_PAIRS, ConfigError, MissingCredentials, PushFailed, UnknownAlias
 except ModuleNotFoundError:  # script mode: python tools/publish.py ...
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from tools.validate import ConfigError
+    from tools.errors import CREDENTIAL_ENV_PAIRS, ConfigError, MissingCredentials, PushFailed, UnknownAlias
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -51,53 +51,6 @@ except ModuleNotFoundError:  # script mode: python tools/publish.py ...
 #: (``digest: sha256:...``) and ``podman push`` (``Digest: sha256:...``).
 #: Matching the bare token accepts both formats.
 DIGEST_TOKEN_RE = re.compile(r"sha256:[0-9a-f]{64}")
-
-#: Accepted credential environment variable pairs, in priority order. The
-#: FIRST pair whose variables are both set wins. Only the variable NAMES are
-#: ever referenced in errors/logs — never the values.
-CREDENTIAL_ENV_PAIRS: tuple[tuple[str, str], ...] = (
-    ("DOCKERHUB_USERNAME", "DOCKERHUB_TOKEN"),
-    ("REGISTRY_USER", "REGISTRY_TOKEN"),
-)
-
-
-# ---------------------------------------------------------------------------
-# Named errors (ConfigError subclasses: str(err) renders Name(field=value))
-# ---------------------------------------------------------------------------
-
-
-class MissingCredentials(ConfigError):
-    """Live push requested but no registry credentials are in the environment.
-
-    Raised BEFORE any engine invocation. Carries only the accepted variable
-    NAMES — credential values are never included.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(
-            expected=" or ".join(
-                f"{user}/{token}" for user, token in CREDENTIAL_ENV_PAIRS
-            )
-        )
-
-
-class PushFailed(ConfigError):
-    """A push/pull/tag engine invocation exited non-zero.
-
-    ``stderr`` is the engine's captured stderr. Engines receive credentials
-    via their own auth files / stdin, so engine stderr does not contain
-    credential values under this project's contract.
-    """
-
-    def __init__(self, image: str, stderr: str) -> None:
-        super().__init__(image=image, stderr=stderr)
-
-
-class UnknownAlias(ConfigError):
-    """The requested alias is not declared in the config's ``[aliases]``."""
-
-    def __init__(self, alias: str) -> None:
-        super().__init__(alias=alias)
 
 
 # ---------------------------------------------------------------------------
