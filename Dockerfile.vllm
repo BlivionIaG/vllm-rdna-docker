@@ -115,12 +115,14 @@ RUN if [ "${USE_SCCACHE}" = "1" ]; then \
         --torch-backend="${TORCH_BACKEND}"
 
 # causal_conv1d for Mamba/SSM model support (Jamba, Zamba, Qwen3-Next
-# hybrid, etc.). Commit 4f6ae4e26ae5fe8af9372f8d312ab25cc4595223 matches
-# the venv-7.2.0 setup on .176. Same arch filter as the FA build in
-# Dockerfile.base (gfx1030 dropped — causal_conv1d's setup.py asserts
-# the same allowlist as tridao flash-attention). Placed AFTER the
-# vLLM editable install so the 30+ min _rocm_C compile layer is
-# cached and not invalidated by this addition.
+# hybrid, etc.). Pinned to upstream commit
+# 4f6ae4e26ae5fe8af9372f8d312ab25cc4595223 — the last upstream point
+# validated against ROCm 7.2.0 + torch 2.10.0 at the time of build.
+# Same arch filter as the FA build in Dockerfile.base (gfx1030 dropped —
+# causal_conv1d's setup.py asserts the same allowlist as tridao
+# flash-attention). Placed AFTER the vLLM editable install so the 30+
+# min _rocm_C compile layer is cached and not invalidated by this
+# addition.
 RUN GPU_ARCHS="$(echo "${PYTORCH_ROCM_ARCH}" | tr ';' '\n' | grep -v '^gfx1030$' | paste -sd ';' -)" \
     uv pip install --system --no-build-isolation \
         git+https://github.com/Dao-AILab/causal-conv1d.git@4f6ae4e26ae5fe8af9372f8d312ab25cc4595223
