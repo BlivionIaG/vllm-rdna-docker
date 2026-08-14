@@ -1,0 +1,19 @@
+# Build context exclusions for vllm-rdna-docker.
+# Both Dockerfile.base and Dockerfile.vllm are self-contained (they clone
+# their sources); the context carries only what the build CLI chooses to
+# send, and these entries keep host state out of it.
+
+.git
+.omo
+tests
+__pycache__
+*.pyc
+*.egg-info
+*.so
+.deps
+build
+dist
+docs
+README.md
+AGENTS.md
+*.log

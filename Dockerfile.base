@@ -1,0 +1,256 @@
+# vllm-rdna-docker base image: ROCm + Python + build toolchain + torch stack.
+#
+# Podman-first, Docker-compatible. Standard Dockerfile syntax only: no
+# RUN --mount=, no --cache-from=/--cache-to=, no --ssh=, no --secret=.
+#
+# Build arguments:
+#   BASE_IMAGE              upstream ROCm base image ref
+#                           (e.g. rocm/dev-ubuntu-22.04:7.2-complete)
+#   ROCM_VERSION            ROCm release (e.g. 7.2.0); recorded as an OCI label
+#   PYTHON_VERSION          Python version installed via deadsnakes PPA (e.g. 3.12)
+#   PYTORCH_VERSION         torch pin for the wheel index install ("" = unpinned)
+#   TRITON_VERSION          triton pin for the wheel index install ("" = unpinned)
+#   PYTORCH_INDEX_URL       wheel index for torch/triton/vision/audio, config-defined
+#                           per base (e.g. https://download.pytorch.org/whl/rocm7.2)
+#   BASE_DIGEST             sha256 of the upstream base image (informational label)
+#   BASE_TAG                published base tag under blivioniag/rocm-rdna
+#   ARCH_LIST               semicolon-joined gfx targets (the seven RDNA targets)
+#   PRIMARY_ARCH            compile anchor for source builds (HCC_AMDGPU_TARGET);
+#                           defaults to gfx1030. Build-time selector, not runtime.
+#   CONFIG_HASH             sha256 of the resolved config (informational label only)
+#   FLASH_ATTENTION_INSTALL where to install Flash Attention: base | vllm | none
+#   FLASH_ATTENTION_VERSION FA version pin (informational; REF drives the clone)
+#   FLASH_ATTENTION_REPO    FA clone URL (default Dao-AILab/flash-attention)
+#   FLASH_ATTENTION_REF     FA branch/tag/commit to clone (default main)
+#   USE_SCCACHE             "1" installs sccache and wraps HIP compilation
+#   SCCACHE_DOWNLOAD_URL    optional override for the sccache tarball URL
+#   SCCACHE_ENDPOINT        optional sccache S3 endpoint
+#   SCCACHE_BUCKET_NAME     sccache S3 bucket (default vllm-build-sccache)
+#   SCCACHE_REGION_NAME     sccache S3 region (default us-west-2)
+#   SCCACHE_S3_NO_CREDENTIALS  "1" for anonymous S3 access
+
+ARG BASE_IMAGE=rocm/dev-ubuntu-22.04:7.2-complete
+ARG ROCM_VERSION=7.2.0
+ARG PYTHON_VERSION=3.12
+ARG PYTORCH_VERSION=
+ARG TRITON_VERSION=
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm7.2
+ARG BASE_DIGEST=
+ARG BASE_TAG=7.2.0
+ARG ARCH_LIST=gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201
+ARG PRIMARY_ARCH=gfx1030
+ARG CONFIG_HASH=
+ARG FLASH_ATTENTION_INSTALL=none
+ARG FLASH_ATTENTION_VERSION=
+ARG FLASH_ATTENTION_REPO=https://github.com/Dao-AILab/flash-attention
+ARG FLASH_ATTENTION_REF=main
+ARG USE_SCCACHE=
+ARG SCCACHE_DOWNLOAD_URL=
+ARG SCCACHE_ENDPOINT=
+ARG SCCACHE_BUCKET_NAME=vllm-build-sccache
+ARG SCCACHE_REGION_NAME=us-west-2
+ARG SCCACHE_S3_NO_CREDENTIALS=0
+
+# ---------------------------------------------------------------------------
+# Stage rocm: upstream ROCm + deadsnakes Python + build toolchain + uv.
+# ---------------------------------------------------------------------------
+FROM ${BASE_IMAGE} AS rocm
+
+ARG PYTHON_VERSION
+ARG ARCH_LIST
+ARG PRIMARY_ARCH
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROCM_PATH=/opt/rocm \
+    PATH=/opt/rocm/llvm/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    LD_LIBRARY_PATH=/opt/rocm/lib \
+    PYTORCH_ROCM_ARCH=${ARCH_LIST} \
+    PRIMARY_ARCH=${PRIMARY_ARCH} \
+    HSA_NO_SCRATCH_RECLAIM=1 \
+    HIP_FORCE_DEV_KERNARG=1
+
+WORKDIR /app
+
+# Python via deadsnakes PPA (Ubuntu 22.04 does not ship 3.12). Retry loop
+# mirrors upstream: the PPA add occasionally fails on transient network.
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        software-properties-common \
+        git \
+        curl \
+        sudo \
+        ca-certificates \
+        libgfortran5 \
+        libopenmpi-dev \
+        libpci-dev \
+        liblzma-dev \
+        pkg-config \
+    && for i in 1 2 3; do \
+        add-apt-repository -y ppa:deadsnakes/ppa && break || \
+        { echo "Attempt $i failed, retrying in 5s..."; sleep 5; }; \
+    done \
+    && apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-alternatives --install /usr/bin/python  python  /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
+    && ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION} \
+    && python3 --version && python3 -m pip --version
+
+# Build toolchain: required for HIP extension builds (vllm._rocm_C, FA, amd_smi).
+RUN python -m pip install --no-cache-dir -U \
+    packaging \
+    'cmake<4' \
+    ninja \
+    wheel \
+    'setuptools<80' \
+    pybind11 \
+    Cython
+
+# uv: canonical package manager for this pipeline.
+RUN curl -LsSf --retry 3 --retry-delay 5 https://astral.sh/uv/install.sh | sh \
+    && /root/.local/bin/uv --version
+ENV PATH=/root/.local/bin:$PATH
+
+# ---------------------------------------------------------------------------
+# sccache (optional, USE_SCCACHE=1): binary + HIP compiler wrappers.
+# Wrappers live in /opt/sccache-wrappers and are selected per compile step via
+# HIP_CLANG_PATH / CMAKE_*_COMPILER_LAUNCHER, never via ENV, so downstream
+# stages and images are unaffected when sccache is off.
+# ---------------------------------------------------------------------------
+ARG USE_SCCACHE
+ARG SCCACHE_DOWNLOAD_URL
+ARG SCCACHE_ENDPOINT
+ARG SCCACHE_BUCKET_NAME
+ARG SCCACHE_REGION_NAME
+ARG SCCACHE_S3_NO_CREDENTIALS
+
+RUN if [ "${USE_SCCACHE}" = "1" ]; then \
+        SCCACHE_ARCH="x86_64" \
+        && SCCACHE_VERSION="v0.8.1" \
+        && SCCACHE_DL_URL="${SCCACHE_DOWNLOAD_URL:-https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}-unknown-linux-musl.tar.gz}" \
+        && curl -L -o /tmp/sccache.tar.gz "${SCCACHE_DL_URL}" \
+        && tar -xzf /tmp/sccache.tar.gz -C /tmp \
+        && mv "/tmp/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}-unknown-linux-musl/sccache" /usr/bin/sccache \
+        && chmod +x /usr/bin/sccache \
+        && rm -rf /tmp/sccache.tar.gz "/tmp/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}-unknown-linux-musl" \
+        && mkdir -p /opt/sccache-wrappers \
+        && printf '#!/bin/bash\nexec sccache /opt/rocm/lib/llvm/bin/clang++ "$@"\n' > /opt/sccache-wrappers/clang++ \
+        && printf '#!/bin/bash\nexec sccache /opt/rocm/lib/llvm/bin/clang "$@"\n' > /opt/sccache-wrappers/clang \
+        && chmod +x /opt/sccache-wrappers/clang++ /opt/sccache-wrappers/clang \
+        && sccache --version; \
+    fi
+
+ENV SCCACHE_BUCKET=${USE_SCCACHE:+${SCCACHE_BUCKET_NAME}} \
+    SCCACHE_REGION=${USE_SCCACHE:+${SCCACHE_REGION_NAME}} \
+    SCCACHE_S3_NO_CREDENTIALS=${USE_SCCACHE:+${SCCACHE_S3_NO_CREDENTIALS}} \
+    SCCACHE_IDLE_TIMEOUT=${USE_SCCACHE:+0}
+
+# ---------------------------------------------------------------------------
+# Stage stack: torch stack from the configured wheel index + amd_smi + FA.
+# ---------------------------------------------------------------------------
+FROM rocm AS stack
+
+ARG ROCM_VERSION
+ARG PYTORCH_VERSION
+ARG TRITON_VERSION
+ARG PYTORCH_INDEX_URL
+ARG FLASH_ATTENTION_INSTALL
+ARG FLASH_ATTENTION_VERSION
+ARG FLASH_ATTENTION_REPO
+ARG FLASH_ATTENTION_REF
+ARG USE_SCCACHE
+
+# torch/triton/torchvision/torchaudio from the config-defined wheel index.
+# --pre tracks the ROCm nightly/pre wheels; --force-reinstall keeps the index
+# authoritative over anything the base image already ships.
+RUN uv pip install --system --pre --force-reinstall --no-cache \
+        --index-url "${PYTORCH_INDEX_URL}" \
+        "torch${PYTORCH_VERSION:+==${PYTORCH_VERSION}}" \
+        torchvision \
+        torchaudio \
+        "triton${TRITON_VERSION:+==${TRITON_VERSION}}"
+
+# AMD SMI wheel (Python bindings shipped inside the ROCm tree).
+RUN cd /opt/rocm/share/amd_smi \
+    && python -m pip wheel . --no-cache-dir --wheel-dir=/app/install \
+    && python -m pip install --no-cache-dir /app/install/*.whl
+
+# Flash Attention, only when install == "base". Clone + install from the
+# config-defined repo/ref; HIP compilation goes through sccache wrappers when
+# USE_SCCACHE=1. GPU_ARCHS receives the full RDNA arch list, with gfx1030
+# filtered out: the tridao branch's validate_and_update_archs drops RDNA2
+# (gfx1030 is not in its allowlist of ['native','gfx90a','gfx942','gfx950',
+# 'gfx1100','gfx1101','gfx1102','gfx1150','gfx1151','gfx1200','gfx1201']).
+# gfx1030 falls back to Triton FA at runtime via FLASH_ATTENTION_TRITON_AMD_ENABLE,
+# which is the documented working RDNA2 path in AGENTS.md.
+RUN if [ "${FLASH_ATTENTION_INSTALL}" = "base" ]; then \
+        git clone --depth 1 --branch "${FLASH_ATTENTION_REF}" "${FLASH_ATTENTION_REPO}" /tmp/flash-attention \
+        && cd /tmp/flash-attention \
+        && git submodule update --init \
+        && if [ "${USE_SCCACHE}" = "1" ]; then \
+            export HIP_CLANG_PATH=/opt/sccache-wrappers \
+                   CMAKE_C_COMPILER_LAUNCHER=sccache \
+                   CMAKE_CXX_COMPILER_LAUNCHER=sccache; \
+        fi \
+        && uv pip install --system --no-cache psutil \
+        && MAX_JOBS=8 GPU_ARCHS="$(echo "${PYTORCH_ROCM_ARCH}" | tr ';' '\n' | grep -v '^gfx1030$' | paste -sd ';' -)" \
+           python -m pip install --no-cache-dir --no-build-isolation . \
+        && cd / \
+        && rm -rf /tmp/flash-attention; \
+    fi
+
+# ---------------------------------------------------------------------------
+# Stage final: labels + smoke checks.
+# ---------------------------------------------------------------------------
+FROM stack AS final
+
+ARG ROCM_VERSION
+ARG PYTHON_VERSION
+ARG PYTORCH_VERSION
+ARG TRITON_VERSION
+ARG PYTORCH_INDEX_URL
+ARG BASE_DIGEST
+ARG BASE_TAG
+ARG ARCH_LIST
+ARG PRIMARY_ARCH
+ARG CONFIG_HASH
+ARG FLASH_ATTENTION_INSTALL
+ARG FLASH_ATTENTION_VERSION
+ARG FLASH_ATTENTION_REPO
+ARG FLASH_ATTENTION_REF
+
+LABEL org.opencontainers.image.title="vllm-rdna-base" \
+      org.opencontainers.image.source="local" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.rocm="${ROCM_VERSION}" \
+      org.opencontainers.image.python="${PYTHON_VERSION}" \
+      org.opencontainers.image.pytorch="${PYTORCH_VERSION}" \
+      org.opencontainers.image.triton="${TRITON_VERSION}" \
+      org.opencontainers.image.pytorch-index-url="${PYTORCH_INDEX_URL}" \
+      org.opencontainers.image.architectures="${ARCH_LIST}" \
+      org.opencontainers.image.primary-arch="${PRIMARY_ARCH}" \
+      org.opencontainers.image.base.digest="${BASE_DIGEST}" \
+      org.opencontainers.image.base.tag="${BASE_TAG}" \
+      org.opencontainers.image.config-hash="${CONFIG_HASH}" \
+      org.opencontainers.image.flash-attention.install="${FLASH_ATTENTION_INSTALL}" \
+      org.opencontainers.image.flash-attention.version="${FLASH_ATTENTION_VERSION}" \
+      org.opencontainers.image.flash-attention.repo="${FLASH_ATTENTION_REPO}" \
+      org.opencontainers.image.flash-attention.ref="${FLASH_ATTENTION_REF}"
+
+RUN python --version \
+    && which python \
+    && python -c "import torch; print('torch', torch.__version__)" \
+    && python -c "import torchvision; print('torchvision', torchvision.__version__)" \
+    && python -c "import torchaudio; print('torchaudio', torchaudio.__version__)" \
+    && python -c "import triton; print('triton', triton.__version__)" \
+    && python -c "import amdsmi; print('amd_smi', amdsmi.__version__)" \
+    && echo "arch: ${ARCH_LIST}" \
+    && echo "primary arch: ${PRIMARY_ARCH}"
+
+WORKDIR /app
+CMD ["/bin/bash"]

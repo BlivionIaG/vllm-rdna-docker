@@ -1,0 +1,170 @@
+# vllm-rdna-docker application image: vLLM built from a pinned source.
+#
+# Podman-first, Docker-compatible. Standard Dockerfile syntax only: no
+# RUN --mount=, no --cache-from=/--cache-to=, no --ssh=, no --secret=.
+#
+# Build arguments:
+#   BASE_IMAGE              published base image
+#                           (e.g. docker.io/blivioniag/rocm-rdna:7.2.0)
+#   VLLM_REPOSITORY         vLLM git clone URL
+#   VLLM_REF                git ref to clone (tag or branch, e.g. v0.26.0)
+#   VLLM_COMMIT             full 40-char commit sha; build fails if HEAD != commit
+#   VLLM_VARIANT            upstream or extras-fork (recorded as a label)
+#   IMAGE_TAG               published tag for this image (e.g. v0.26.0)
+#   IMAGE_REPOSITORY        published repository (e.g. docker.io/blivioniag/vllm-rdna)
+#   ARCH_LIST               semicolon-joined gfx targets forwarded from the base
+#   TORCH_BACKEND           uv --torch-backend value derived from the base ROCm
+#                           version (e.g. rocm7.2 for ROCm 7.2.0)
+#   CONFIG_HASH             sha256 of the resolved config (informational label only)
+#   FLASH_ATTENTION_INSTALL where to install Flash Attention: base | vllm | none
+#   FLASH_ATTENTION_VERSION FA version pin (informational; REF drives the clone)
+#   FLASH_ATTENTION_REPO    FA clone URL (default Dao-AILab/flash-attention)
+#   FLASH_ATTENTION_REF     FA branch/tag/commit to clone (default main)
+#   USE_SCCACHE             "1" wraps HIP compilation of the vLLM extension in
+#                           sccache (requires the base to have wrappers at
+#                           /opt/sccache-wrappers, i.e. built with USE_SCCACHE=1)
+
+ARG BASE_IMAGE=docker.io/blivioniag/rocm-rdna:7.2.0
+ARG VLLM_REPOSITORY=https://github.com/vllm-project/vllm.git
+ARG VLLM_REF=v0.26.0
+ARG VLLM_COMMIT=
+ARG VLLM_VARIANT=upstream
+ARG IMAGE_TAG=v0.26.0
+ARG IMAGE_REPOSITORY=docker.io/blivioniag/vllm-rdna
+ARG ARCH_LIST=gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201
+ARG CONFIG_HASH=
+ARG TORCH_BACKEND=rocm7.2
+ARG FLASH_ATTENTION_INSTALL=none
+ARG FLASH_ATTENTION_VERSION=
+ARG FLASH_ATTENTION_REPO=https://github.com/Dao-AILab/flash-attention
+ARG FLASH_ATTENTION_REF=main
+ARG USE_SCCACHE=
+
+# ---------------------------------------------------------------------------
+# Stage source: clone the pinned vLLM ref and verify the immutable commit.
+# ---------------------------------------------------------------------------
+FROM ${BASE_IMAGE} AS source
+
+ARG VLLM_REPOSITORY
+ARG VLLM_REF
+ARG VLLM_COMMIT
+
+WORKDIR /src
+RUN git clone --depth 1 --branch "${VLLM_REF}" "${VLLM_REPOSITORY}" vllm \
+    && cd vllm \
+    && actual="$(git rev-parse HEAD)" \
+    && if [ -n "${VLLM_COMMIT}" ] && [ "${actual}" != "${VLLM_COMMIT}" ]; then \
+           echo "VLLM_COMMIT mismatch: expected ${VLLM_COMMIT} got ${actual}" >&2; \
+           exit 1; \
+       fi \
+    && echo "vllm source: ${VLLM_REPOSITORY}@${VLLM_REF} (${actual})"
+
+# ---------------------------------------------------------------------------
+# Stage builder: optional FA, then editable vLLM install with ROCm extensions.
+# ---------------------------------------------------------------------------
+FROM source AS builder
+
+ARG ARCH_LIST
+ARG TORCH_BACKEND
+ARG FLASH_ATTENTION_INSTALL
+ARG FLASH_ATTENTION_REPO
+ARG FLASH_ATTENTION_REF
+ARG USE_SCCACHE
+
+ENV VLLM_TARGET_DEVICE=rocm \
+    VLLM_USE_PRECOMPILED=0 \
+    ENABLE_CK=0 \
+    FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE \
+    ROCM_HOME=/opt/rocm \
+    PYTORCH_ROCM_ARCH=${ARCH_LIST}
+
+# Flash Attention in the application layer, only when install == "vllm".
+RUN if [ "${FLASH_ATTENTION_INSTALL}" = "vllm" ]; then \
+        git clone --depth 1 --branch "${FLASH_ATTENTION_REF}" "${FLASH_ATTENTION_REPO}" /tmp/flash-attention \
+        && cd /tmp/flash-attention \
+        && git submodule update --init \
+        && GPU_ARCHS="${PYTORCH_ROCM_ARCH}" \
+           python -m pip install --no-cache-dir --no-build-isolation . \
+        && cd / \
+        && rm -rf /tmp/flash-attention; \
+    fi
+
+# Patch vllm v0.26.0 ROCm circular-import bug at module load. The
+# module-level `_GCN_ARCH = _get_gcn_arch()` in vllm/platforms/rocm.py
+# triggers logger.warning_once() in the fallback path, which imports
+# vllm.distributed, which imports vllm.utils.system_utils, which does
+# `from vllm.platforms import current_platform` — but vllm/platforms/
+# __init__.py is still mid-load and hasn't exported `current_platform`
+# yet. Patched source is committed to the image so future vllm v0.26.0
+# builds from this Dockerfile work without out-of-tree edits.
+COPY tools/patch_vllm_rocm.py /tmp/patch_vllm_rocm.py
+RUN python /tmp/patch_vllm_rocm.py /src/vllm/vllm/platforms/rocm.py
+
+# Editable install from the cloned source; uv resolves the torch backend
+# against the config-derived --torch-backend value. HIP compilation of
+# _rocm_C goes through sccache wrappers when USE_SCCACHE=1.
+WORKDIR /src/vllm
+RUN if [ "${USE_SCCACHE}" = "1" ]; then \
+        export HIP_CLANG_PATH=/opt/sccache-wrappers \
+               CMAKE_C_COMPILER_LAUNCHER=sccache \
+               CMAKE_CXX_COMPILER_LAUNCHER=sccache; \
+    fi \
+    && uv pip install --system setuptools_rust setuptools_scm \
+    && uv pip install --system -e . \
+        --no-build-isolation \
+        --torch-backend="${TORCH_BACKEND}"
+
+# causal_conv1d for Mamba/SSM model support (Jamba, Zamba, Qwen3-Next
+# hybrid, etc.). Commit 4f6ae4e26ae5fe8af9372f8d312ab25cc4595223 matches
+# the venv-7.2.0 setup on .176. Same arch filter as the FA build in
+# Dockerfile.base (gfx1030 dropped — causal_conv1d's setup.py asserts
+# the same allowlist as tridao flash-attention). Placed AFTER the
+# vLLM editable install so the 30+ min _rocm_C compile layer is
+# cached and not invalidated by this addition.
+RUN GPU_ARCHS="$(echo "${PYTORCH_ROCM_ARCH}" | tr ';' '\n' | grep -v '^gfx1030$' | paste -sd ';' -)" \
+    uv pip install --system --no-build-isolation \
+        git+https://github.com/Dao-AILab/causal-conv1d.git@4f6ae4e26ae5fe8af9372f8d312ab25cc4595223
+
+# ---------------------------------------------------------------------------
+# Stage final: labels + smoke checks + exec-form ENTRYPOINT.
+# ---------------------------------------------------------------------------
+FROM builder AS final
+
+# RDNA platform defaults. Both are runtime-overridable:
+#   podman run -e VLLM_ROCM_USE_AITER=1 ...            (opt AITER back in)
+#   podman run -e FLASH_ATTENTION_TRITON_AMD_ENABLE=0  (opt Triton FA out)
+# AITER is CDNA-only (gfx942/gfx950) and must stay off on RDNA; the Triton
+# Flash Attention backend is the working RDNA path. VLLM_RDNA_FORCE_FP16 is
+# deliberately NOT set here; hipBLASLt policy is documented in README.md
+# ("hipBLASLt on gfx1030") and is likewise not disabled by default.
+ENV VLLM_ROCM_USE_AITER=0 \
+    FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
+
+ARG VLLM_REPOSITORY
+ARG VLLM_REF
+ARG VLLM_COMMIT
+ARG VLLM_VARIANT
+ARG IMAGE_TAG
+ARG IMAGE_REPOSITORY
+ARG ARCH_LIST
+ARG TORCH_BACKEND
+ARG CONFIG_HASH
+
+LABEL org.opencontainers.image.title="vllm-rdna" \
+      org.opencontainers.image.source="local" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="${IMAGE_TAG}" \
+      org.opencontainers.image.architectures="${ARCH_LIST}" \
+      org.opencontainers.image.torch-backend="${TORCH_BACKEND}" \
+      org.opencontainers.image.config-hash="${CONFIG_HASH}" \
+      vllm.variant="${VLLM_VARIANT}" \
+      vllm.repository="${VLLM_REPOSITORY}" \
+      vllm.ref="${VLLM_REF}" \
+      vllm.commit="${VLLM_COMMIT}"
+
+RUN python --version \
+    && python -c "import vllm; print('vllm', vllm.__version__)" \
+    && python -c "import vllm._rocm_C; print('vllm._rocm_C OK')"
+
+WORKDIR /app
+ENTRYPOINT ["vllm"]
