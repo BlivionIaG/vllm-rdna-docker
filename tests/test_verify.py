@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 import tools.verify
-from tools.build import main, verify_expected_labels
+from tools._build_cli import main, verify_expected_labels
 from tools.resolve import load_config, resolve_config
 from tools.verify import VerifyResult, verify_image
 

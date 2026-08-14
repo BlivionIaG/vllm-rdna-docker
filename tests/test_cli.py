@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.build import (
+from tools._build_cli import (
     ENGINE_ENV_VAR,
     base_build_args,
     main,
