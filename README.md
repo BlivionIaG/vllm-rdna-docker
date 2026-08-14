@@ -29,9 +29,8 @@ secrets.
 | `tools/publish.py` | Immutable push and alias promotion (credentials from environment only) |
 | `Dockerfile.base` | Portable ROCm base image (standard Dockerfile syntax) |
 | `Dockerfile.vllm` | vLLM application image, parameterized by source record |
-| `ci/lint.py` | Static lint for the CI adapters (host-path ban, required secrets) |
-| `.github/workflows/build.yml` | GitHub Actions adapter (thin) |
-| `.gitea/workflows/build.yml` | Gitea Actions adapter (thin) |
+| `ci/lint.py` | Static lint for the CI workflow (host-path ban, required secrets) |
+| `.github/workflows/build.yml` | GitHub Actions adapter |
 | `tests/` | Unit suite: `python -m pytest vllm-rdna-docker/tests/ -q` |
 
 ## Configuration
@@ -248,18 +247,22 @@ commands run from the repository root.
 
 ## CI
 
-Two thin adapters invoke the same repository-owned CLI; neither contains
-build logic:
+The GitHub Actions adapter (`.github/workflows/build.yml`) defines three jobs:
 
-- `.github/workflows/build.yml` (GitHub Actions)
-- `.gitea/workflows/build.yml` (Gitea Actions)
+- **`build`** — lints the adapter, runs the unit suite, exercises the CLI
+  end-to-end in dry-run mode on a generic runner. Runs on tag push and
+  manual dispatch. Branch pushes never trigger CI.
+- **`build-base-on-demand`** — workflow-dispatch only. Builds ONE chosen
+  rocm base (the `base_id` workflow input is a choice between `rocm720` and
+  `rocm714`, the `[bases.*]` keys in the config) on the external Podman
+  runner, then publishes it. Credentials gated via `REGISTRY_USER` /
+  `REGISTRY_TOKEN`.
+- **`release`** — tag-release only. Builds the application image, verifies
+  OCI labels + SBOM, then publishes it. Same runner + same credential
+  gate as `build-base-on-demand`.
 
-The `build` job lints the adapters, runs the unit suite, and exercises the
-CLI end-to-end in dry-run mode on a generic runner. The `gpu-smoke` job is
-manual-trigger only and runs real builds plus `verify` on the external
-Podman runner labeled `[self-hosted, linux, rdna]`. Both adapters are gated
-on the `REGISTRY_USER` / `REGISTRY_TOKEN` secrets; a preflight refuses to
-build or publish when they are absent. Evidence is uploaded as the
+The adapter contains no build logic — every step invokes
+`python vllm-rdna-docker/tools/build.py ...`. Evidence is uploaded as the
 `vllm-rdna-evidence` artifact. See [`ci/README.md`](ci/README.md) for the
 full contract.
 

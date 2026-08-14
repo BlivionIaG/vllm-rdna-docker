@@ -1,52 +1,53 @@
 # CI Contract — vllm-rdna-docker
 
-Both providers call the SAME Python CLI. Provider-specific YAML contains only
-triggers, runner labels, secrets, and artifact plumbing. The build machine is
-external and Podman-based. No host path is hardcoded anywhere.
+The workflow calls the repository-owned Python CLI. Provider-specific YAML
+contains only triggers, runner labels, secrets, and artifact plumbing.
+The build machine is external and Podman-based. No host path is hardcoded
+anywhere.
 
 ## Adapters
 
 | Provider | File | Runner labels |
 |----------|------|---------------|
-| GitHub Actions | `vllm-rdna-docker/.github/workflows/build.yml` | `ubuntu-latest` (overridable via the `VLLM_RDNA_RUNNER` repository variable); GPU smoke on `[self-hosted, linux, rdna]` |
-| Gitea Actions | `vllm-rdna-docker/.gitea/workflows/build.yml` | `ubuntu-latest`; GPU smoke on `[self-hosted, linux, rdna]` |
+| GitHub Actions | `vllm-rdna-docker/.github/workflows/build.yml` | `ubuntu-latest` (overridable via the `VLLM_RDNA_RUNNER` repository variable); GPU jobs on `[self-hosted, linux, rdna]` |
 
-Both adapters invoke identical repository commands:
+The adapter invokes the same repository commands:
 
 ```bash
-python vllm-rdna-docker/tools/build.py build-base --config vllm-rdna-docker/config/rocm-7.2.0.toml [--base rocm720] [--dry-run]
-python vllm-rdna-docker/tools/build.py build-vllm --config vllm-rdna-docker/config/rocm-7.2.0.toml --image vllm-026-upstream-rocm720 [--dry-run]
-python vllm-rdna-docker/tools/build.py verify     --config vllm-rdna-docker/config/rocm-7.2.0.toml --image vllm-026-upstream-rocm720
+python vllm-rdna-docker/tools/build.py build-base --config vllm-rdna-docker/config/rocm-7.2.0.toml [--base <id>] [--dry-run]
+python vllm-rdna-docker/tools/build.py build-vllm  --config vllm-rdna-docker/config/rocm-7.2.0.toml --image <id> [--dry-run]
+python vllm-rdna-docker/tools/build.py verify      --config vllm-rdna-docker/config/rocm-7.2.0.toml --image <id>
+python vllm-rdna-docker/tools/build.py publish    --config vllm-rdna-docker/config/rocm-7.2.0.toml --image <id> [--base <id>]
 ```
 
-There is no provider-specific build logic: any change to how images are built
-lands in `tools/build.py` (or the Dockerfiles), never in workflow YAML.
+There is no provider-specific build logic: any change to how images are
+built lands in `tools/build.py` (or the Dockerfiles), never in workflow YAML.
 
 ## Jobs
 
 - **`build`** — runs on `push` to `v*` tags and on manual dispatch. Lints
-  the adapters, runs the unit suite (`python -m pytest
+  the adapter, runs the unit suite (`python -m pytest
   vllm-rdna-docker/tests/ -q`), then exercises the CLI contract end-to-end
   in dry-run mode. Uploads `.omo/evidence/` as the `vllm-rdna-evidence`
   artifact. Branch pushes (master, etc.) never trigger this job.
-- **`build-base-on-demand`** — workflow-dispatch only. Builds ONE chosen
-  rocm base on the external Podman runner (`[self-hosted, linux, rdna]`).
-  The `base_id` workflow input is a choice between `rocm720` and `rocm714`
-  (the `[bases.*]` keys in `config/rocm-7.2.0.toml`). No vllm build, no
-  verify, no publish — just the base image, so iterating on a base does
-  not consume a full release slot.
-- **`gpu-smoke`** — tag-release only (`push` to `refs/tags/v*`). Runs on
-  the external Podman runner (`[self-hosted, linux, rdna]`, the `rdna`
-  label is the hint that this must be an RDNA-equipped machine). Executes
-  real (non-dry-run) `build-base --base rocm720`, `build-vllm`, and
-  `verify`. A preflight step gates on the `REGISTRY_USER` /
-  `REGISTRY_TOKEN` secrets and refuses to build or publish without them.
-  Secret values are never printed.
+- **`build-base-on-demand`** — workflow-dispatch only. The `base_id`
+  workflow input is a choice between `rocm720` and `rocm714` (the
+  `[bases.*]` keys in `config/rocm-7.2.0.toml`). Builds that single rocm
+  base on the external Podman runner (`[self-hosted, linux, rdna]`) and
+  publishes it to the registry. Credentials preflighted via
+  `REGISTRY_USER` / `REGISTRY_TOKEN`.
+- **`release`** — tag-release only (`push` to `refs/tags/v*`). Runs on the
+  external Podman runner (`[self-hosted, linux, rdna]`, the `rdna` label
+  is the hint that this must be an RDNA-equipped machine). Builds the
+  application image (`vllm-026-upstream-rocm720`) referencing the
+  already-published base, verifies OCI labels + SBOM, then publishes the
+  vllm image. Credentials preflighted via `REGISTRY_USER` /
+  `REGISTRY_TOKEN`; secret values are never printed.
 
 Triggers summary:
 
-| Event | `build` | `build-base-on-demand` | `gpu-smoke` |
-|-------|---------|------------------------|-------------|
+| Event | `build` | `build-base-on-demand` | `release` |
+|-------|---------|------------------------|-----------|
 | Push to branch | ❌ | ❌ | ❌ |
 | Push tag `vX.Y.Z` | ✅ | ❌ | ✅ |
 | Workflow dispatch (no input) | ✅ | ❌ | ❌ |
@@ -64,17 +65,17 @@ Triggers summary:
 `ci/lint.py` enforces this contract mechanically:
 
 ```bash
-python vllm-rdna-docker/ci/lint.py            # lints both committed adapters
-python vllm-rdna-docker/ci/lint.py FILE ...   # lints specific files
+python vllm-rdna-docker/ci/lint.py            # lints the committed adapter
+python vllm-rdna-docker/ci/lint.py FILE ...   # lint specific files
 ```
 
 Checks (each violation is a named error, exit code 1 if any):
 
-- `MissingCliInvocation` — a workflow never calls
+- `MissingCliInvocation` — the workflow never calls
   `python vllm-rdna-docker/tools/build.py` (regex over the raw file text);
 - `HostPathInWorkflow` — an absolute `/home/`, `/root/`, or `/Users/` path
-  appears in a workflow (the host-path ban from `tools/validate.py` extends
-  to CI);
+  appears in the workflow (the host-path ban from `tools/validate.py`
+  extends to CI);
 - `MissingSecretReference` — `REGISTRY_USER` or `REGISTRY_TOKEN` is not
   referenced;
 - `WorkflowParseError` — the file is not valid YAML with a `jobs` mapping.

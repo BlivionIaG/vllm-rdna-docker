@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Static linter for the GitHub/Gitea workflow adapters.
+"""Static linter for the GitHub Actions workflow adapter.
 
 Enforces the CI contract (see ``ci/README.md``):
 
-  * both workflows invoke the repository-owned CLI — every workflow file
-    must contain a ``python vllm-rdna-docker/tools/build.py`` invocation
-    (matched against the raw file text, so shell indirection cannot hide
-    provider-specific build logic);
+  * the workflow invokes the repository-owned CLI — it must contain a
+    ``python vllm-rdna-docker/tools/build.py`` invocation (matched against
+    the raw file text, so shell indirection cannot hide provider-specific
+    build logic);
   * the host-path ban from ``tools/validate.py`` extends to CI — no
     workflow may contain an absolute ``/home/...`` (``/root/``,
     ``/Users/``) path, because the build machine is external and
     Podman-based;
-  * both workflows reference the required registry secret names
+  * the workflow references the required registry secret names
     ``REGISTRY_USER`` and ``REGISTRY_TOKEN`` (values are never printed —
     only the names are checked);
-  * both files parse as valid YAML mappings with a ``jobs`` section.
+  * the file parses as a valid YAML mapping with a ``jobs`` section.
 
 Every violation is reported as a named error (``HostPathInWorkflow``,
 ``MissingSecretReference``, ``MissingCliInvocation``, ``WorkflowParseError``)
@@ -23,9 +23,9 @@ and the process exits non-zero if any violation is found.
 Usage:
     python vllm-rdna-docker/ci/lint.py [workflow.yml ...]
 
-With no arguments, lints the two committed adapters
-(``.github/workflows/build.yml`` and ``.gitea/workflows/build.yml``).
-Requires PyYAML (see ``vllm-rdna-docker/requirements-ci.txt``).
+With no arguments, lints the committed adapter
+(``.github/workflows/build.yml``). Requires PyYAML (see
+``vllm-rdna-docker/requirements-ci.txt``).
 """
 
 from __future__ import annotations
@@ -41,20 +41,19 @@ import yaml
 # Contract constants
 # ---------------------------------------------------------------------------
 
-#: The single entry point both providers must call (regex on raw file text).
+#: The single entry point the workflow must call (regex on raw file text).
 CLI_PATTERN = re.compile(r"python\s+vllm-rdna-docker/tools/build\.py")
 
 #: Absolute host-path prefixes forbidden anywhere in a workflow file.
 #: Mirrors tools/validate.py: the build machine is external and Podman-based.
 HOST_PATH_PREFIXES: tuple[str, ...] = ("/home/", "/root/", "/Users/")
 
-#: Registry credential secret NAMES every workflow must reference.
+#: Registry credential secret NAMES the workflow must reference.
 REQUIRED_SECRETS: tuple[str, ...] = ("REGISTRY_USER", "REGISTRY_TOKEN")
 
-#: The two committed adapters linted by default.
+#: The committed adapter linted by default.
 DEFAULT_WORKFLOWS: tuple[Path, ...] = (
     Path(__file__).resolve().parent.parent / ".github" / "workflows" / "build.yml",
-    Path(__file__).resolve().parent.parent / ".gitea" / "workflows" / "build.yml",
 )
 
 
@@ -81,7 +80,7 @@ class MissingSecretReference(WorkflowLintError):
 
 
 class MissingCliInvocation(WorkflowLintError):
-    """A workflow never calls ``python vllm-rdna-docker/tools/build.py``."""
+    """A workflow does not invoke the repository-owned build CLI."""
 
 
 class WorkflowParseError(WorkflowLintError):
