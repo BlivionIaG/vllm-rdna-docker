@@ -10,9 +10,16 @@ no config validator, no custom linter.
 
 | Target | Tag | Notes |
 |---|---|---|
+| `base-rocm720` | `docker.io/blivioniag/rocm-rdna:7.2.0` | PyTorch 2.12.0, Triton 3.5.1 |
 | `base-rocm714` | `docker.io/blivioniag/rocm-rdna:7.14.0` | PyTorch 2.13.0, Triton 3.7.1 |
-| `vllm-0271-rocm714` | `…/vllm-rdna:v0.27.1` | vLLM `v0.27.1` @ `6e448d0`, no patch |
-| `vllm-0271-rocm714-extras` | `…/vllm-rdna:v0.27.1-extras` | fork, no commit pin (fill in when fork is tagged) |
+| `vllm-0260-rocm720` | `…/vllm-rdna:v0.26.0` | vLLM `v0.26.0` @ `568afb3` |
+| `vllm-0260-rocm714` | `…/vllm-rdna:v0.26.0-rocm7.14.0` | same source, ROCm 7.14.0 base |
+| `vllm-0260-rocm720-extras` | `…/vllm-rdna:v0.26.0-extras` | fork with extra RDNA kernels |
+| `vllm-0260-rocm714-extras` | `…/vllm-rdna:v0.26.0-extras-rocm7.14.0` | same fork, ROCm 7.14.0 base |
+| `vllm-0271-rocm720` | `…/vllm-rdna:v0.27.1` | vLLM `v0.27.1` @ `6e448d0`, no patch |
+| `vllm-0271-rocm714` | `…/vllm-rdna:v0.27.1-rocm7.14.0` | same source, ROCm 7.14.0 base |
+| `vllm-0271-rocm720-extras` | `…/vllm-rdna:v0.27.1-extras` | fork, no commit pin (fill in when fork is tagged) |
+| `vllm-0271-rocm714-extras` | `…/vllm-rdna:v0.27.1-extras-rocm7.14.0` | same fork, ROCm 7.14.0 base |
 
 Groups: `all` (= `all-bases` + `all-vllm`), `all-bases`, `all-vllm`.
 

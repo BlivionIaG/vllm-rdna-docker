@@ -16,8 +16,15 @@ on:
           - all
           - all-vllm
           - all-bases
+          - base-rocm720
           - base-rocm714
+          - vllm-0260-rocm720
+          - vllm-0260-rocm714
+          - vllm-0260-rocm720-extras
+          - vllm-0260-rocm714-extras
+          - vllm-0271-rocm720
           - vllm-0271-rocm714
+          - vllm-0271-rocm720-extras
           - vllm-0271-rocm714-extras
         default: all
       push:
