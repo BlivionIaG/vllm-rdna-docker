@@ -70,14 +70,20 @@ produces. If you want a different default, reorder the base targets.
 
 ## The RDNA patch
 
-`Dockerfile.vllm` runs a small Python `RUN` step after the vLLM clone to
-patch `vllm/platforms/rocm.py` for the build context:
+`Dockerfile.vllm` applies `patches/v0.26.0-rocm-platforms.patch` with
+`git apply` after the vLLM clone. The patch fixes the v0.26.0 ROCm
+build-context bug in `vllm/platforms/rocm.py`:
 
-1. Skips a `logger.warning_once()` call that triggers a circular import
-   at module load.
-2. Wraps the module-level GCN arch detection in `try/except` so a missing
-   GPU during build doesn't crash the import.
+1. Removes a `logger.warning_once()` call that triggers a circular
+   import at module load
+   (vllm.distributed → vllm.utils.system_utils → `from vllm.platforms
+   import current_platform`, which is still mid-load).
+2. Wraps the module-level GCN arch detection in `try/except` so a
+   missing GPU during build doesn't crash the import. Callers
+   re-resolve via `current_platform` on first use.
 
-The patch is inline in the Dockerfile (no external file, no separate
-Python script). It's a one-time fix for the v0.26.0 ROCm circular
-import bug; remove it once upstream is fixed.
+The patch is a standard unified diff. It was generated with
+`git diff` from a known-good patched state on a fresh v0.26.0 clone
+and verified with `git apply --check`. It's a one-time fix for the
+v0.26.0 ROCm circular import bug; drop the file and the `RUN git
+apply` line once upstream is fixed.
