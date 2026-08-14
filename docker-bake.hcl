@@ -17,7 +17,7 @@ target "base-rocm720" {
   dockerfile = "Dockerfile.base"
   tags       = ["docker.io/blivioniag/rocm-rdna:7.2.0"]
   platforms  = ["linux/amd64"]
-  target     = "base"
+  target     = "final"
   args = {
     BASE_IMAGE        = "rocm/dev-ubuntu-22.04:7.2-complete"
     BASE_DIGEST       = "sha256:a1b2c3d4e5f60718293a4b5c6d7e8f900a1b2c3d4e5f60718293a4b5c6d7e8f9"
@@ -34,7 +34,7 @@ target "base-rocm714" {
   dockerfile = "Dockerfile.base"
   tags       = ["docker.io/blivioniag/rocm-rdna:7.14.0"]
   platforms  = ["linux/amd64"]
-  target     = "base"
+  target     = "final"
   args = {
     BASE_IMAGE        = "rocm/dev-ubuntu-22.04:7.14.0-full"
     BASE_DIGEST       = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
