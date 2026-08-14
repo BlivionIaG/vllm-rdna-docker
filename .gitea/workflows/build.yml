@@ -10,6 +10,15 @@ name: vllm-rdna-docker build
 
 on:
   workflow_dispatch:
+    inputs:
+      base_id:
+        description: 'ROCm base id to build (must match a [bases.*] key in config/rocm-7.2.0.toml)'
+        required: true
+        default: 'rocm720'
+        type: choice
+        options:
+          - rocm720
+          - rocm714
   push:
     tags:
       - "v*"
@@ -51,7 +60,38 @@ jobs:
           path: .omo/evidence/
           if-no-files-found: ignore
 
+  build-base-on-demand:
+    # Workflow-dispatch only: build ONE chosen rocm base on the external
+    # Podman runner. No vllm build, no verify, no publish — just the base,
+    # so iterating on a base image does not consume a full release slot.
+    if: gitea.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, rdna]
+    env:
+      BASE_ID: ${{ gitea.inputs.base_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build base image on external Podman runner
+        run: python vllm-rdna-docker/tools/build.py build-base --config vllm-rdna-docker/config/rocm-7.2.0.toml --base "$BASE_ID"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vllm-rdna-evidence
+          path: .omo/evidence/
+          if-no-files-found: ignore
+
   gpu-smoke:
+    # Tag-release only: full pipeline (base + vllm + verify) on the external
+    # Podman runner. The on-demand path is build-base-on-demand (above).
+    if: gitea.event_name == 'push' && startsWith(gitea.ref, 'refs/tags/')
     runs-on: [self-hosted, linux, rdna]
     steps:
       - name: Checkout

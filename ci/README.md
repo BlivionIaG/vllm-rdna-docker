@@ -24,17 +24,33 @@ lands in `tools/build.py` (or the Dockerfiles), never in workflow YAML.
 
 ## Jobs
 
-- **`build`** — runs on every push to `master` / `v*` tags and on manual
-  dispatch (Gitea: every push + manual dispatch). Lints the adapters, runs
-  the unit suite (`python -m pytest vllm-rdna-docker/tests/ -q`), then
-  exercises the CLI contract end-to-end in dry-run mode. Uploads
-  `.omo/evidence/` as the `vllm-rdna-evidence` artifact.
-- **`gpu-smoke`** — manual trigger only, runs on the external Podman runner
-  (`[self-hosted, linux, rdna]`, the `rdna` label is the hint that this must
-  be an RDNA-equipped machine). Executes real (non-dry-run) `build-base
-  --base rocm720`, `build-vllm`, and `verify`. A preflight step gates on the
-  `REGISTRY_USER` / `REGISTRY_TOKEN` secrets and refuses to build or publish
-  without them. Secret values are never printed.
+- **`build`** — runs on `push` to `v*` tags and on manual dispatch. Lints
+  the adapters, runs the unit suite (`python -m pytest
+  vllm-rdna-docker/tests/ -q`), then exercises the CLI contract end-to-end
+  in dry-run mode. Uploads `.omo/evidence/` as the `vllm-rdna-evidence`
+  artifact. Branch pushes (master, etc.) never trigger this job.
+- **`build-base-on-demand`** — workflow-dispatch only. Builds ONE chosen
+  rocm base on the external Podman runner (`[self-hosted, linux, rdna]`).
+  The `base_id` workflow input is a choice between `rocm720` and `rocm714`
+  (the `[bases.*]` keys in `config/rocm-7.2.0.toml`). No vllm build, no
+  verify, no publish — just the base image, so iterating on a base does
+  not consume a full release slot.
+- **`gpu-smoke`** — tag-release only (`push` to `refs/tags/v*`). Runs on
+  the external Podman runner (`[self-hosted, linux, rdna]`, the `rdna`
+  label is the hint that this must be an RDNA-equipped machine). Executes
+  real (non-dry-run) `build-base --base rocm720`, `build-vllm`, and
+  `verify`. A preflight step gates on the `REGISTRY_USER` /
+  `REGISTRY_TOKEN` secrets and refuses to build or publish without them.
+  Secret values are never printed.
+
+Triggers summary:
+
+| Event | `build` | `build-base-on-demand` | `gpu-smoke` |
+|-------|---------|------------------------|-------------|
+| Push to branch | ❌ | ❌ | ❌ |
+| Push tag `vX.Y.Z` | ✅ | ❌ | ✅ |
+| Workflow dispatch (no input) | ✅ | ❌ | ❌ |
+| Workflow dispatch + `base_id` | ✅ | ✅ | ❌ |
 
 ## Secrets
 
