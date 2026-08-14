@@ -18,10 +18,10 @@ on:
           - all-bases
           - base-rocm720
           - base-rocm714
-          - vllm-upstream026-rocm720
-          - vllm-upstream026-rocm714
-          - vllm-extras026-rocm720
-          - vllm-extras026-rocm714
+          - vllm-0260-rocm720
+          - vllm-0260-rocm714
+          - vllm-0260-rocm720-extras
+          - vllm-0260-rocm714-extras
         default: all
       push:
         description: 'Push images to the registry (requires credentials)'

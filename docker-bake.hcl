@@ -51,7 +51,7 @@ target "base-rocm714" {
 # vLLM application images — one per (source, base) pair
 # ---------------------------------------------------------------------------
 
-target "vllm-upstream026-rocm720" {
+target "vllm-0260-rocm720" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0"]
   platforms  = ["linux/amd64"]
@@ -69,7 +69,7 @@ target "vllm-upstream026-rocm720" {
   }
 }
 
-target "vllm-upstream026-rocm714" {
+target "vllm-0260-rocm714" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0-rocm7.14.0"]
   platforms  = ["linux/amd64"]
@@ -87,7 +87,7 @@ target "vllm-upstream026-rocm714" {
   }
 }
 
-target "vllm-extras026-rocm720" {
+target "vllm-0260-rocm720-extras" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0-extras"]
   platforms  = ["linux/amd64"]
@@ -105,7 +105,7 @@ target "vllm-extras026-rocm720" {
   }
 }
 
-target "vllm-extras026-rocm714" {
+target "vllm-0260-rocm714-extras" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0-extras-rocm7.14.0"]
   platforms  = ["linux/amd64"]
@@ -133,10 +133,10 @@ group "all-bases" {
 
 group "all-vllm" {
   targets = [
-    "vllm-upstream026-rocm720",
-    "vllm-upstream026-rocm714",
-    "vllm-extras026-rocm720",
-    "vllm-extras026-rocm714",
+    "vllm-0260-rocm720",
+    "vllm-0260-rocm714",
+    "vllm-0260-rocm720-extras",
+    "vllm-0260-rocm714-extras",
   ]
 }
 
