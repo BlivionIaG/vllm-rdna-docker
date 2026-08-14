@@ -1,147 +1,73 @@
-# GitHub Actions adapter for the vllm-rdna-docker release pipeline.
+# GitHub Actions for vllm-rdna-docker.
 #
-# CONTRACT: this file contains ONLY triggers, runner labels, secrets, and
-# artifact plumbing. ALL build logic lives in the repository-owned CLI
-# (`python vllm-rdna-docker/tools/build.py ...`). The build machine is
-# external and Podman-based — no host path is hardcoded anywhere
-# (enforced by vllm-rdna-docker/ci/lint.py).
-#
-# Engine model: GitHub CI runs Docker + docker buildx bake (modern). Local
-# development uses Podman directly (`--engine podman`). Every CLI call here
-# passes --engine docker explicitly so the Bake path is used in CI.
+# The whole build is driven by `docker-bake.hcl` (the source of truth)
+# and stock `docker/bake-action`. No Python wrapper, no custom linter.
 
 name: vllm-rdna-docker build
 
 on:
   workflow_dispatch:
     inputs:
-      base_id:
-        description: 'ROCm base id to build + publish (must match a [bases.*] key in config/rocm-7.2.0.toml)'
+      target:
+        description: 'Bake target (base-<id>, vllm-<id>, all-bases, all-vllm, all)'
         required: true
-        type: string
-        default: 'rocm720'
+        type: choice
+        options:
+          - all
+          - all-vllm
+          - all-bases
+          - base-rocm720
+          - base-rocm714
+          - vllm-upstream026-rocm720
+          - vllm-upstream026-rocm714
+          - vllm-extras026-rocm720
+          - vllm-extras026-rocm714
+        default: all
+      push:
+        description: 'Push images to the registry (requires credentials)'
+        required: false
+        type: boolean
+        default: true
   push:
     tags:
       - "v*"
 
 jobs:
   build:
-    # Default to GitHub-hosted ubuntu-latest; operators may override the
-    # runner label via the VLLM_RDNA_RUNNER repository variable.
     runs-on: ${{ vars.VLLM_RDNA_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        if: ${{ inputs.push || github.event_name == 'push' }}
+        uses: docker/login-action@v3
         with:
-          python-version: "3.11"
+          registry: docker.io
+          username: ${{ vars.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
-      - name: Install CI tooling
-        run: pip install -r vllm-rdna-docker/requirements-ci.txt
-
-      - name: Lint workflow adapter
-        run: python vllm-rdna-docker/ci/lint.py
-
-      - name: Run unit tests
-        run: python -m pytest vllm-rdna-docker/tests/ -q
-
-      - name: CLI contract dry-run (build-base, all bases, podman)
-        run: python vllm-rdna-docker/tools/build.py build-base --config vllm-rdna-docker/config/rocm-7.2.0.toml --engine=podman --dry-run
-
-      - name: CLI contract dry-run (build-vllm, all images, podman)
-        run: python vllm-rdna-docker/tools/build.py build-vllm --config vllm-rdna-docker/config/rocm-7.2.0.toml --engine=podman --dry-run
-
-      - name: CLI contract verify (podman)
-        run: python vllm-rdna-docker/tools/build.py verify --config vllm-rdna-docker/config/rocm-7.2.0.toml --engine=podman
-
-      - name: Upload evidence
-        uses: actions/upload-artifact@v4
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          name: vllm-rdna-evidence
-          path: .omo/evidence/
-          if-no-files-found: ignore
+          images: blivioniag/vllm-rdna
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=match,pattern=v(.*),group=1
 
-  build-base-on-demand:
-    # Workflow-dispatch only. Builds ONE chosen rocm base on the external
-    # Podman runner AND publishes it to the registry. The base_id input
-    # is a free-text string (no hardcoded choice list) so any new base
-    # added to the config works without editing this file.
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, linux, rdna]
-    env:
-      BASE_ID: ${{ inputs.base_id }}
-      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Bake
+        uses: docker/bake-action@v5
         with:
-          python-version: "3.11"
-
-      - name: Preflight registry credentials
-        run: |
-          if [ -z "$REGISTRY_USER" ] || [ -z "$REGISTRY_TOKEN" ]; then
-            echo "MissingCredentials: REGISTRY_USER and REGISTRY_TOKEN secrets are required; refusing to build or publish" >&2
-            exit 1
-          fi
-
-      - name: Build base image on external runner
-        run: python vllm-rdna-docker/tools/build.py build-base --engine=docker --config vllm-rdna-docker/config/rocm-7.2.0.toml --base "$BASE_ID"
-
-      - name: Publish base image to registry
-        run: python vllm-rdna-docker/tools/build.py publish --engine=docker --config vllm-rdna-docker/config/rocm-7.2.0.toml --base "$BASE_ID"
-
-      - name: Upload evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vllm-rdna-evidence
-          path: .omo/evidence/
-          if-no-files-found: ignore
-
-  release:
-    # Tag-release only. Builds every [[images]] entry on the external
-    # Podman runner, verifies OCI labels + SBOM, then publishes them.
-    # No --image flag — fully data-driven from config/rocm-7.2.0.toml.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    runs-on: [self-hosted, linux, rdna]
-    env:
-      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Preflight registry credentials
-        run: |
-          if [ -z "$REGISTRY_USER" ] || [ -z "$REGISTRY_TOKEN" ]; then
-            echo "MissingCredentials: REGISTRY_USER and REGISTRY_TOKEN secrets are required; refusing to build or publish" >&2
-            exit 1
-          fi
-
-      - name: Build every application image
-        run: python vllm-rdna-docker/tools/build.py build-vllm --engine=docker --config vllm-rdna-docker/config/rocm-7.2.0.toml
-
-      - name: Verify every application image
-        run: python vllm-rdna-docker/tools/build.py verify --engine=docker --config vllm-rdna-docker/config/rocm-7.2.0.toml
-
-      - name: Publish every application image to registry
-        run: python vllm-rdna-docker/tools/build.py publish --engine=docker --config vllm-rdna-docker/config/rocm-7.2.0.toml
-
-      - name: Upload evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vllm-rdna-evidence
-          path: .omo/evidence/
-          if-no-files-found: ignore
+          files: docker-bake.hcl
+          targets: ${{ inputs.target || 'all' }}
+          push: ${{ inputs.push || github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
