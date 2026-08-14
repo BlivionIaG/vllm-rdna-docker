@@ -69,14 +69,12 @@ Current tags (from `config/rocm-7.2.0.toml`):
 |-----|------|--------|
 | `v0.26.0` | rocm720 | upstream `v0.26.0` |
 | `v0.26.0-extras` | rocm720 | extras-fork `v0.26.0-extras` |
-| `v0.26.0-rocm7.2.1` | rocm721 | upstream `v0.26.0` |
-| `v0.26.0-extras-rocm7.2.1` | rocm721 | extras-fork `v0.26.0-extras` |
 | `v0.26.0-rocm7.14.0` | rocm714 | upstream `v0.26.0` |
 | `v0.26.0-extras-rocm7.14.0` | rocm714 | extras-fork `v0.26.0-extras` |
 
 The unqualified tags (`v0.26.0`, `v0.26.0-extras`) are aliases promoted onto
-the default (rocm720) combinations. Qualified tags (`-rocm7.2.1`,
-`-rocm7.14.0`, ...) are produced directly by their images.
+the default (rocm720) combinations. Qualified tags (`-rocm7.14.0`)
+are produced directly by their images.
 
 ### Legacy tags (preserved, never overwritten)
 

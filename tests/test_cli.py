@@ -80,7 +80,7 @@ def test_validate_subcommand_example_config() -> None:
     result = _run_cli("validate", "--config", str(EXAMPLE_CONFIG))
     assert result.returncode == 0
     assert "OK:" in result.stdout
-    for base_id in ("rocm720", "rocm721", "rocm714"):
+    for base_id in ("rocm720", "rocm714"):
         assert base_id in result.stdout
     for image_id in ("vllm-026-extras-rocm714",):
         assert image_id in result.stdout
@@ -98,8 +98,8 @@ def test_resolve_subcommand_json() -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert len(payload["config_hash"]) == 64
-    assert len(payload["image_records"]) == 6
-    assert len(payload["base_records"]) == 3
+    assert len(payload["image_records"]) == 4
+    assert len(payload["base_records"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ def test_build_base_dry_run_renders_podman_command() -> None:
     assert result.returncode == 0
     # Rendered commands go to stdout (one per line, shell-quoted).
     lines = [line for line in result.stdout.splitlines() if line.strip()]
-    assert len(lines) == 3  # rocm720, rocm721, rocm714
+    assert len(lines) == 2  # rocm720, rocm714
     assert all(line.startswith("podman build ") for line in lines)
     rocm720_line = lines[0]
     assert "Dockerfile.base" in rocm720_line

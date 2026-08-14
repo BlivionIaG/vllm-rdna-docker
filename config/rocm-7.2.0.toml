@@ -5,11 +5,11 @@
 #
 # This config describes:
 #   * one portable seven-architecture RDNA target set (no primary arch);
-#   * three ROCm base stacks (rocm720, rocm721, rocm714) published as
+#   * two ROCm base stacks (rocm720, rocm714) published as
 #     blivioniag/rocm-rdna — each base pins its OWN upstream base_image and
 #     base_digest; there is no project-level default image;
 #   * two vLLM sources (upstream v0.26.0, extras-fork v0.26.0-extras);
-#   * six explicit approved base x source images published as blivioniag/vllm-rdna;
+#   * four explicit approved base x source images published as blivioniag/vllm-rdna;
 #   * unqualified aliases for the two default (rocm720) combinations.
 
 [project]
@@ -50,17 +50,6 @@ version = "2.8.4"
 repo = "https://github.com/ROCm/flash-attention.git"
 ref = "tridao"
 
-[bases.rocm721]
-id = "rocm721"
-rocm_version = "7.2.1"
-python_version = "3.12"
-pytorch_version = "2.12.0"
-triton_version = "3.5.1"
-base_image = "rocm/dev-ubuntu-22.04:7.2.1-complete"
-base_digest = "sha256:f9e8d7c6b5a493827160f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0"
-pytorch_index_url = "https://download.pytorch.org/whl/rocm7.2"
-tag = "7.2.1"
-
 # 7.14.0 pins its own upstream image/digest: per-base pinning, no project default.
 [bases.rocm714]
 id = "rocm714"
@@ -91,7 +80,7 @@ repository = "https://github.com/vllm-project/vllm.git"
 version = "0.26.0"
 ref = "v0.26.0"
 commit = "568afb3a13806beb53bb2e6bd518269357b237c0"
-compatible_bases = ["rocm720", "rocm721", "rocm714"]
+compatible_bases = ["rocm720", "rocm714"]
 
 [sources.extras026]
 id = "extras026"
@@ -100,7 +89,7 @@ repository = "https://github.com/blivioniag/vllm.git"
 version = "0.26.0"
 ref = "v0.26.0-extras"
 commit = "9f3b6d1a8c5e0274b6d8a0c2e4f6a8c0d2e4f6a8"
-compatible_bases = ["rocm720", "rocm721", "rocm714"]
+compatible_bases = ["rocm720", "rocm714"]
 
 # ---------------------------------------------------------------------------
 # Images — the explicit approved matrix. No automatic Cartesian product:
@@ -121,18 +110,6 @@ source = "extras026"
 tag = "v0.26.0-extras"
 
 # Alternate-base combinations produce qualified tags.
-[[images]]
-id = "vllm-026-upstream-rocm721"
-base = "rocm721"
-source = "upstream026"
-tag = "v0.26.0-rocm7.2.1"
-
-[[images]]
-id = "vllm-026-extras-rocm721"
-base = "rocm721"
-source = "extras026"
-tag = "v0.26.0-extras-rocm7.2.1"
-
 [[images]]
 id = "vllm-026-upstream-rocm714"
 base = "rocm714"

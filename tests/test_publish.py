@@ -182,7 +182,7 @@ def test_credentials_never_appear_in_commands_or_results(
     monkeypatch.setattr(subprocess, "run", _fake_run)
     published = publish_image(f"{VLLM_REPO}:v0.26.0", engine="podman")
     promoted = promote_alias(
-        f"{VLLM_REPO}:v0.26.0-rocm7.2.1", f"{VLLM_REPO}:v0.26.0", engine="podman"
+        f"{VLLM_REPO}:v0.26.0-rocm7.14.0", f"{VLLM_REPO}:v0.26.0", engine="podman"
     )
     for artifact in (published, promoted):
         assert FAKE_TOKEN not in artifact.command
@@ -201,7 +201,7 @@ def test_promote_alias_dry_run_renders_pull_tag_push_sequence(
         pytest.fail("dry-run attempted a subprocess call")
 
     monkeypatch.setattr(subprocess, "run", _forbidden)
-    source = f"{VLLM_REPO}:v0.26.0-rocm7.2.1"
+    source = f"{VLLM_REPO}:v0.26.0-rocm7.14.0"
     target = f"{VLLM_REPO}:v0.26.0"
     result = promote_alias(source, target, engine="podman", dry_run=True)
     assert result.source == source
@@ -223,7 +223,7 @@ def test_promote_alias_live_runs_pull_tag_push_in_order(
         return _completed(argv, stdout=stdout)
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
-    source = f"{VLLM_REPO}:v0.26.0-rocm7.2.1"
+    source = f"{VLLM_REPO}:v0.26.0-rocm7.14.0"
     target = f"{VLLM_REPO}:v0.26.0"
     result = promote_alias(source, target, engine="podman")
     assert captured == [
@@ -263,7 +263,7 @@ def test_cli_publish_single_image_dry_run(
         [
             "publish",
             "--config", str(EXAMPLE_CONFIG),
-            "--image", "vllm-026-upstream-rocm721",
+            "--image", "vllm-026-upstream-rocm714",
             "--engine", "podman",
             "--dry-run",
         ]
@@ -271,7 +271,7 @@ def test_cli_publish_single_image_dry_run(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert captured.out.strip() == (
-        f"podman push {VLLM_REPO}:v0.26.0-rocm7.2.1"
+        f"podman push {VLLM_REPO}:v0.26.0-rocm7.14.0"
     )
     assert FAKE_TOKEN not in captured.out + captured.err
 
@@ -338,7 +338,7 @@ def test_cli_publish_all_dry_run_covers_bases_and_images(
     assert exit_code == 0
     captured = capsys.readouterr()
     lines = [line for line in captured.out.splitlines() if line.strip()]
-    assert len(lines) == 9  # 3 bases + 6 images
+    assert len(lines) == 6  # 2 bases + 4 images
     assert f"podman push docker.io/blivioniag/rocm-rdna:7.2.0" in lines
     assert f"podman push {VLLM_REPO}:v0.26.0" in lines
     assert f"podman push {VLLM_REPO}:v0.26.0-extras-rocm7.14.0" in lines

@@ -166,9 +166,9 @@ def test_example_config_resolves_deterministic_records() -> None:
     assert isinstance(resolved, ResolvedBuild)
     # config_hash is a sha256 over canonical JSON: 64 lowercase hex chars.
     assert SHA256_RE.match(resolved.config_hash)
-    # 3 bases, 2 sources, 6 images, 7 architectures.
-    assert {b.id for b in resolved.base_records} == {"rocm720", "rocm721", "rocm714"}
-    assert len(resolved.base_records) == 3
+    # 2 bases, 2 sources, 4 images, 7 architectures.
+    assert {b.id for b in resolved.base_records} == {"rocm720", "rocm714"}
+    assert len(resolved.base_records) == 2
     assert {s.id for s in resolved.source_records} == {"upstream026", "extras026"}
     assert len(resolved.source_records) == 2
     # Every declared source commit verifies offline (pre-recorded commits,
@@ -177,12 +177,10 @@ def test_example_config_resolves_deterministic_records() -> None:
     assert all(
         s.resolved_commit == s.configured_commit for s in resolved.source_records
     )
-    assert len(resolved.image_records) == 6
+    assert len(resolved.image_records) == 4
     assert {i.id for i in resolved.image_records} == {
         "vllm-026-upstream-rocm720",
         "vllm-026-extras-rocm720",
-        "vllm-026-upstream-rocm721",
-        "vllm-026-extras-rocm721",
         "vllm-026-upstream-rocm714",
         "vllm-026-extras-rocm714",
     }
@@ -365,15 +363,13 @@ def test_cli_happy_summary() -> None:
     assert NETWORK_ENV_VAR in result.stderr
     # Human-readable summary lists every record.
     assert "config_hash=" in result.stdout
-    for base_id in ("rocm720", "rocm721", "rocm714"):
+    for base_id in ("rocm720", "rocm714"):
         assert base_id in result.stdout
     for source_id in ("upstream026", "extras026"):
         assert source_id in result.stdout
     for image_id in (
         "vllm-026-upstream-rocm720",
         "vllm-026-extras-rocm720",
-        "vllm-026-upstream-rocm721",
-        "vllm-026-extras-rocm721",
         "vllm-026-upstream-rocm714",
         "vllm-026-extras-rocm714",
     ):
@@ -385,8 +381,8 @@ def test_cli_full_json() -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert SHA256_RE.match(payload["config_hash"])
-    assert len(payload["image_records"]) == 6
-    assert len(payload["base_records"]) == 3
+    assert len(payload["image_records"]) == 4
+    assert len(payload["base_records"]) == 2
     assert len(payload["source_records"]) == 2
 
 

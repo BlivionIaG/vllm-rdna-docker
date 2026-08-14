@@ -158,7 +158,7 @@ that the unqualified tag `v0.26.0` resolves to that image. Rules:
   never an arbitrary nickname;
 - the alias must not be in `reserved_tags` (`ReservedTag`).
 
-Qualified tags (e.g. `v0.26.0-rocm7.2.1`) are produced by their images
+Qualified tags (e.g. `v0.26.0-rocm7.14.0`) are produced by their images
 directly and do not need aliases.
 
 ## `[patches.<key>]` / `[artifacts.<key>]` (optional, EXPERIMENTAL)

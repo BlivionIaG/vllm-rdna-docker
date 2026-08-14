@@ -163,13 +163,11 @@ def test_example_config_passes_and_has_expected_shape() -> None:
     summary = load_config(EXAMPLE_CONFIG)
     assert set(summary.architectures) == set(REQUIRED_ARCHITECTURES)
     assert len(summary.architectures) == 7
-    assert set(summary.base_ids) == {"rocm720", "rocm721", "rocm714"}
+    assert set(summary.base_ids) == {"rocm720", "rocm714"}
     assert set(summary.source_ids) == {"upstream026", "extras026"}
     assert set(summary.image_ids) == {
         "vllm-026-upstream-rocm720",
         "vllm-026-extras-rocm720",
-        "vllm-026-upstream-rocm721",
-        "vllm-026-extras-rocm721",
         "vllm-026-upstream-rocm714",
         "vllm-026-extras-rocm714",
     }
@@ -187,8 +185,7 @@ def test_per_base_base_image_preserved_on_summary() -> None:
     summary = load_config(EXAMPLE_CONFIG)
     assert summary.base_images["rocm720"] == "rocm/dev-ubuntu-22.04:7.2-complete"
     assert summary.base_images["rocm714"] == "rocm/dev-ubuntu-22.04:7.14.0-full"
-    assert summary.base_images["rocm721"] == "rocm/dev-ubuntu-22.04:7.2.1-complete"
-    assert len(set(summary.base_images.values())) == 3
+    assert len(set(summary.base_images.values())) == 2
 
 
 def test_example_config_has_no_primary_key_anywhere() -> None:
