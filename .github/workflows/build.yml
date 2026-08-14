@@ -1,0 +1,96 @@
+# GitHub Actions adapter for the vllm-rdna-docker release pipeline.
+#
+# CONTRACT: this file contains ONLY triggers, runner labels, secrets, and
+# artifact plumbing. ALL build logic lives in the repository-owned CLI
+# (`python vllm-rdna-docker/tools/build.py ...`); the Gitea adapter invokes
+# the exact same commands. The build machine is external and Podman-based —
+# no host path is hardcoded anywhere (enforced by vllm-rdna-docker/ci/lint.py).
+
+name: vllm-rdna-docker build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    # Default to GitHub-hosted ubuntu-latest; operators may override the
+    # runner label via the VLLM_RDNA_RUNNER repository variable.
+    runs-on: ${{ vars.VLLM_RDNA_RUNNER || 'ubuntu-latest' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CI tooling
+        run: pip install -r vllm-rdna-docker/requirements-ci.txt
+
+      - name: Lint workflow adapters
+        run: python vllm-rdna-docker/ci/lint.py
+
+      - name: Run unit tests
+        run: python -m pytest vllm-rdna-docker/tests/ -q
+
+      - name: CLI contract dry-run (build-base, all bases)
+        run: python vllm-rdna-docker/tools/build.py build-base --config vllm-rdna-docker/config/rocm-7.2.0.toml --dry-run
+
+      - name: CLI contract dry-run (build-vllm, one image)
+        run: python vllm-rdna-docker/tools/build.py build-vllm --config vllm-rdna-docker/config/rocm-7.2.0.toml --image vllm-026-upstream-rocm720 --dry-run
+
+      - name: CLI contract verify
+        run: python vllm-rdna-docker/tools/build.py verify --config vllm-rdna-docker/config/rocm-7.2.0.toml --image vllm-026-upstream-rocm720
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: vllm-rdna-evidence
+          path: .omo/evidence/
+          if-no-files-found: ignore
+
+  gpu-smoke:
+    # Manual trigger only: builds real images on the external Podman runner.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, rdna]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Preflight registry credentials
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$REGISTRY_USER" ] || [ -z "$REGISTRY_TOKEN" ]; then
+            echo "MissingCredentials: REGISTRY_USER and REGISTRY_TOKEN secrets are required; refusing to build or publish" >&2
+            exit 1
+          fi
+
+      - name: Build base image (rocm720) on external Podman runner
+        run: python vllm-rdna-docker/tools/build.py build-base --config vllm-rdna-docker/config/rocm-7.2.0.toml --base rocm720
+
+      - name: Build application image on external Podman runner
+        run: python vllm-rdna-docker/tools/build.py build-vllm --config vllm-rdna-docker/config/rocm-7.2.0.toml --image vllm-026-upstream-rocm720
+
+      - name: Verify application image
+        run: python vllm-rdna-docker/tools/build.py verify --config vllm-rdna-docker/config/rocm-7.2.0.toml --image vllm-026-upstream-rocm720
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vllm-rdna-evidence
+          path: .omo/evidence/
+          if-no-files-found: ignore
