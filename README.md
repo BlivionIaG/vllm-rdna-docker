@@ -4,14 +4,23 @@ Builds ROCm/RDNA base images and vLLM application images for AMD consumer
 GPUs. Two Dockerfiles, one bake graph, one CI workflow. No Python layer,
 no config validator, no custom linter.
 
-## What ships
+## Targets
 
-| Image | Tag pattern | Source |
+`docker-bake.hcl` produces six images:
+
+| Target | Tag | Notes |
 |---|---|---|
-| `docker.io/blivioniag/rocm-rdna` | `7.2.0`, `7.14.0` | `Dockerfile.base` |
-| `docker.io/blivioniag/vllm-rdna` | `v0.26.0`, `v0.26.0-extras`, plus `-rocm7.14.0` variants | `Dockerfile.vllm` |
+| `base-rocm720` | `docker.io/blivioniag/rocm-rdna:7.2.0` | PyTorch 2.12.0, Triton 3.5.1 |
+| `base-rocm714` | `docker.io/blivioniag/rocm-rdna:7.14.0` | PyTorch 2.13.0, Triton 3.7.1 |
+| `vllm-upstream026-rocm720` | `…/vllm-rdna:v0.26.0` | vLLM `v0.26.0` @ `568afb3` |
+| `vllm-upstream026-rocm714` | `…/vllm-rdna:v0.26.0-rocm7.14.0` | same source, ROCm 7.14.0 base |
+| `vllm-extras026-rocm720` | `…/vllm-rdna:v0.26.0-extras` | fork with extra RDNA kernels |
+| `vllm-extras026-rocm714` | `…/vllm-rdna:v0.26.0-extras-rocm7.14.0` | same fork, ROCm 7.14.0 base |
 
-The `v0.26.0-extras` variant is a fork with extra kernels.
+Groups: `all` (= `all-bases` + `all-vllm`), `all-bases`, `all-vllm`.
+
+The seven RDNA archs `gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201`
+are baked into every image via `PYTORCH_ROCM_ARCH`.
 
 ## Build locally
 
@@ -32,9 +41,8 @@ docker buildx bake --file docker-bake.hcl vllm-upstream026-rocm720
 docker buildx bake --file docker-bake.hcl --print all
 ```
 
-Bake runs the targets in parallel. The seven RDNA targets
-(`gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201`) are
-baked into each image.
+Bake runs the targets in parallel. For Podman locally, add
+`--engine podman` if your buildx setup doesn't auto-detect it.
 
 ## CI
 
@@ -46,16 +54,38 @@ baked into each image.
 Uses stock `docker/setup-buildx-action`, `docker/login-action`,
 `docker/metadata-action`, and `docker/bake-action`. GHA cache enabled.
 
+## Build arguments
+
+`Dockerfile.vllm` accepts (all set in `docker-bake.hcl` per target):
+
+| ARG | Purpose |
+|---|---|
+| `BASE_IMAGE` | Published base image (e.g. `…/rocm-rdna:7.2.0`) |
+| `VLLM_REPOSITORY` | vLLM git clone URL |
+| `VLLM_REF` | Git ref to clone (tag or branch, e.g. `v0.26.0`) |
+| `VLLM_COMMIT` | Full 40-char commit; build fails if HEAD != commit |
+| `VLLM_VARIANT` | `upstream` or `extras-fork` (recorded as a label) |
+| `IMAGE_TAG` | Published tag for this image |
+| `IMAGE_REPOSITORY` | Published repository |
+| `PYTORCH_ROCM_ARCH` | Semicolon-joined gfx targets (`ARCH_LIST` forwards) |
+| `TORCH_BACKEND` | `uv --torch-backend` value (e.g. `rocm7.2`) |
+| `FLASH_ATTENTION_INSTALL` | `base` \| `vllm` \| `none` |
+| `FLASH_ATTENTION_REPO` | FA clone URL (default `Dao-AILab/flash-attention`) |
+| `FLASH_ATTENTION_REF` | FA branch/tag/commit to clone (default `main`) |
+| `USE_SCCACHE` | `1` to wrap HIP compilation in sccache (base must be built with `USE_SCCACHE=1`) |
+| `CONFIG_HASH` | Sha256 of the resolved config (informational label) |
+
 ## Adding a new base
 
 1. Copy a `target "base-<id>"` block in `docker-bake.hcl`. Set
-   `BASE_IMAGE`, `ROCM_VERSION`, `PYTORCH_VERSION`, `TRITON_VERSION`,
-   `PYTORCH_INDEX_URL`, `BASE_TAG` to the values you need.
+   `BASE_IMAGE`, `BASE_DIGEST`, `ROCM_VERSION`, `PYTORCH_VERSION`,
+   `TRITON_VERSION`, `PYTORCH_INDEX_URL`, `BASE_TAG` to the values
+   you need.
 2. Add a `target "vllm-<source>-<id>"` block for each existing source
    (`upstream026`, `extras026`, ...). Set `BASE_IMAGE` to your new
    base's full ref and `TORCH_BACKEND` to `rocm<X>.<Y>` derived from
    the ROCm version.
-3. Add the new ids to the `all-bases` and `all-vllm` groups.
+3. Add the new id to the `all-bases` and `all-vllm` groups.
 
 ## Adding a new vLLM source
 
@@ -68,7 +98,31 @@ The base default is implicit: the unqualified tag (`v0.26.0`,
 `v0.26.0-extras`) is whatever the first base in `docker-bake.hcl`
 produces. If you want a different default, reorder the base targets.
 
-## The RDNA patch
+## Adding a new RDNA patch
+
+`patches/v0.26.0-rocm-platforms.patch` is the v0.26.0-specific fix.
+For a new vLLM release:
+
+1. Clone the upstream tag locally and check out the first commit
+   where the issue is hit.
+2. Edit the file(s) by hand to the desired end state.
+3. Generate the diff:
+   ```bash
+   git diff -- vllm/platforms/rocm.py > patches/v<N>.<M>.<P>-rocm-platforms.patch
+   ```
+4. Verify it applies cleanly against a fresh clone:
+   ```bash
+   git clone --depth 1 --branch v<N>.<M>.<P> https://github.com/vllm-project/vllm.git /tmp/vllm-test
+   cd /tmp/vllm-test && git apply --check /path/to/patches/v<N>.<M>.<P>-rocm-platforms.patch
+   ```
+5. Add the `RUN git apply /src/patches/v<N>.<M>.<P>-rocm-platforms.patch`
+   line to `Dockerfile.vllm` after the `COPY patches/ patches/` step.
+
+The existing v0.26.0 patch can stay applied as a no-op if the
+upstream fix hasn't landed yet — `git apply` will fail loudly if the
+context drifts.
+
+## The v0.26.0 RDNA patch
 
 `Dockerfile.vllm` applies `patches/v0.26.0-rocm-platforms.patch` with
 `git apply` after the vLLM clone. The patch fixes the v0.26.0 ROCm
