@@ -73,6 +73,7 @@ Uses stock `docker/setup-buildx-action`, `docker/login-action`,
 | `FLASH_ATTENTION_REPO` | FA clone URL (default `Dao-AILab/flash-attention`) |
 | `FLASH_ATTENTION_REF` | FA branch/tag/commit to clone (default `main`) |
 | `USE_SCCACHE` | `1` to wrap HIP compilation in sccache (base must be built with `USE_SCCACHE=1`) |
+| `VLLM_PATCH_FILE` | Path to a `.patch` file in `patches/` to apply after the vLLM clone (e.g. `patches/v0.26.0-rocm-platforms.patch`). Empty = no patch. |
 | `CONFIG_HASH` | Sha256 of the resolved config (informational label) |
 
 ## Adding a new base
@@ -115,12 +116,14 @@ For a new vLLM release:
    git clone --depth 1 --branch v<N>.<M>.<P> https://github.com/vllm-project/vllm.git /tmp/vllm-test
    cd /tmp/vllm-test && git apply --check /path/to/patches/v<N>.<M>.<P>-rocm-platforms.patch
    ```
-5. Add the `RUN git apply /src/patches/v<N>.<M>.<P>-rocm-platforms.patch`
-   line to `Dockerfile.vllm` after the `COPY patches/ patches/` step.
+5. Set `VLLM_PATCH_FILE = "patches/v<N>.<M>.<P>-rocm-platforms.patch"`
+   in the `args` block of every `vllm-<source>-<base>` target that
+   builds against this vLLM version in `docker-bake.hcl`. Leave it
+   empty (`""`) if no patch is needed.
 
-The existing v0.26.0 patch can stay applied as a no-op if the
-upstream fix hasn't landed yet — `git apply` will fail loudly if the
-context drifts.
+The `COPY patches/ /src/patches/` step in `Dockerfile.vllm` runs
+unconditionally (it's cheap); the `git apply` is gated on
+`VLLM_PATCH_FILE` being non-empty.
 
 ## The v0.26.0 RDNA patch
 

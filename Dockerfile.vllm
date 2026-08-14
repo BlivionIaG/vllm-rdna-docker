@@ -39,6 +39,7 @@ ARG FLASH_ATTENTION_VERSION=
 ARG FLASH_ATTENTION_REPO=https://github.com/Dao-AILab/flash-attention
 ARG FLASH_ATTENTION_REF=main
 ARG USE_SCCACHE=
+ARG VLLM_PATCH_FILE=
 
 # ---------------------------------------------------------------------------
 # Stage source: clone the pinned vLLM ref and verify the immutable commit.
@@ -59,10 +60,16 @@ RUN git clone --depth 1 --branch "${VLLM_REF}" "${VLLM_REPOSITORY}" vllm \
        fi \
     && echo "vllm source: ${VLLM_REPOSITORY}@${VLLM_REF} (${actual})"
 
-# Apply the v0.26.0 RDNA patch (circular import + lazy GCN arch detection).
-# See patches/v0.26.0-rocm-platforms.patch for the diff and rationale.
-COPY patches/ patches/
-RUN git apply /src/patches/v0.26.0-rocm-platforms.patch
+# Apply the per-vLLM-version RDNA patch. VLLM_PATCH_FILE is set per
+# target in docker-bake.hcl (e.g. patches/v0.26.0-rocm-platforms.patch).
+# Empty VLLM_PATCH_FILE = no patch.
+COPY patches/ /src/patches/
+RUN if [ -n "${VLLM_PATCH_FILE}" ]; then \
+        echo "Applying patch: ${VLLM_PATCH_FILE}"; \
+        git apply "/src/${VLLM_PATCH_FILE}"; \
+    else \
+        echo "VLLM_PATCH_FILE is empty; skipping patch step"; \
+    fi
 
 # ---------------------------------------------------------------------------
 # Stage builder: optional FA, then editable vLLM install with ROCm extensions.

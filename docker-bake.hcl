@@ -65,6 +65,7 @@ target "vllm-upstream026-rocm720" {
     TORCH_BACKEND    = "rocm7.2"
     PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
     IMAGE_TAG        = "v0.26.0"
+    VLLM_PATCH_FILE  = "patches/v0.26.0-rocm-platforms.patch"
   }
 }
 
@@ -82,6 +83,7 @@ target "vllm-upstream026-rocm714" {
     TORCH_BACKEND    = "rocm7.14"
     PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
     IMAGE_TAG        = "v0.26.0-rocm7.14.0"
+    VLLM_PATCH_FILE  = "patches/v0.26.0-rocm-platforms.patch"
   }
 }
 
@@ -99,6 +101,7 @@ target "vllm-extras026-rocm720" {
     TORCH_BACKEND    = "rocm7.2"
     PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
     IMAGE_TAG        = "v0.26.0-extras"
+    VLLM_PATCH_FILE  = "patches/v0.26.0-rocm-platforms.patch"
   }
 }
 
@@ -116,6 +119,7 @@ target "vllm-extras026-rocm714" {
     TORCH_BACKEND    = "rocm7.14"
     PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
     IMAGE_TAG        = "v0.26.0-extras-rocm7.14.0"
+    VLLM_PATCH_FILE  = "patches/v0.26.0-rocm-platforms.patch"
   }
 }
 
