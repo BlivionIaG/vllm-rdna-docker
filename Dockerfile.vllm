@@ -90,6 +90,16 @@ ENV VLLM_TARGET_DEVICE=rocm \
     ROCM_HOME=/opt/rocm \
     PYTORCH_ROCM_ARCH=${ARCH_LIST}
 
+# ROCm/HIP build deps not always present in the base image. rocm_smi
+# (shipped in /opt/rocm) does a pkg_check_modules for libdrm at
+# find_package time, so the .deb is required even though no runtime
+# library from libdrm is linked.
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        libdrm-dev \
+        libdrm-amdgpu-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Flash Attention in the application layer, only when install == "vllm".
 RUN if [ "${FLASH_ATTENTION_INSTALL}" = "vllm" ]; then \
         git clone --depth 1 --branch "${FLASH_ATTENTION_REF}" "${FLASH_ATTENTION_REPO}" /tmp/flash-attention \
