@@ -101,9 +101,9 @@ RUN if [ "${FLASH_ATTENTION_INSTALL}" = "vllm" ]; then \
         && rm -rf /tmp/flash-attention; \
     fi
 
-# Editable install from the cloned source; uv resolves the torch backend
-# against the config-derived --torch-backend value. HIP compilation of
-# _rocm_C goes through sccache wrappers when USE_SCCACHE=1.
+# Editable install from the cloned source; --no-build-isolation uses the
+# torch already installed in the base layer. HIP compilation of _rocm_C
+# goes through sccache wrappers when USE_SCCACHE=1.
 WORKDIR /src/vllm
 RUN if [ "${USE_SCCACHE}" = "1" ]; then \
         export HIP_CLANG_PATH=/opt/sccache-wrappers \
@@ -112,8 +112,7 @@ RUN if [ "${USE_SCCACHE}" = "1" ]; then \
     fi \
     && uv pip install --system setuptools_rust setuptools_scm \
     && uv pip install --system -e . \
-        --no-build-isolation \
-        --torch-backend="${TORCH_BACKEND}"
+        --no-build-isolation
 
 # causal_conv1d for Mamba/SSM model support (Jamba, Zamba, Qwen3-Next
 # hybrid, etc.). Pinned to upstream commit
