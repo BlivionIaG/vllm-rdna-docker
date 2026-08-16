@@ -57,7 +57,7 @@ target "vllm-0260-rocm720" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
     BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.2.0"
     VLLM_REPOSITORY  = "https://github.com/vllm-project/vllm.git"
@@ -75,7 +75,7 @@ target "vllm-0260-rocm714" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0-rocm7.14.0"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
     BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.14.0"
     VLLM_REPOSITORY  = "https://github.com/vllm-project/vllm.git"
@@ -93,7 +93,7 @@ target "vllm-0260-rocm720-extras" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0-extras"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
     BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.2.0"
     VLLM_REPOSITORY  = "https://github.com/BlivionIaG/vllm.git"
@@ -111,16 +111,16 @@ target "vllm-0260-rocm714-extras" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.26.0-extras-rocm7.14.0"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
-    BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.14.0"
+    BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.2.0"
     VLLM_REPOSITORY  = "https://github.com/BlivionIaG/vllm.git"
     VLLM_REF         = "v0.26.0-extras"
     VLLM_COMMIT      = "9f3b6d1a8c5e0274b6d8a0c2e4f6a8c0d2e4f6a8"
     VLLM_VARIANT     = "extras-fork"
-    TORCH_BACKEND    = "rocm7.14"
+    TORCH_BACKEND    = "rocm7.2"
     PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
-    IMAGE_TAG        = "v0.26.0-extras-rocm7.14.0"
+    IMAGE_TAG        = "v0.26.0-extras"
     VLLM_PATCH_FILE  = "patches/v0.26.0-rocm-platforms.patch"
   }
 }
@@ -129,7 +129,7 @@ target "vllm-0271-rocm720" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
     BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.2.0"
     VLLM_REPOSITORY  = "https://github.com/vllm-project/vllm.git"
@@ -147,7 +147,7 @@ target "vllm-0271-rocm714" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1-rocm7.14.0"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
     BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.14.0"
     VLLM_REPOSITORY  = "https://github.com/vllm-project/vllm.git"
@@ -165,7 +165,7 @@ target "vllm-0271-rocm720-extras" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1-extras"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
     BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.2.0"
     VLLM_REPOSITORY  = "https://github.com/BlivionIaG/vllm.git"
@@ -183,7 +183,7 @@ target "vllm-0271-rocm714-extras" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1-extras-rocm7.14.0"]
   platforms  = ["linux/amd64"]
-  target     = "vllm"
+  target     = "final"
   args = {
     BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.14.0"
     VLLM_REPOSITORY  = "https://github.com/BlivionIaG/vllm.git"
