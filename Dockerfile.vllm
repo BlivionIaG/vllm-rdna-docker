@@ -97,7 +97,6 @@ ENV VLLM_TARGET_DEVICE=rocm \
 RUN apt-get update -y \
     && apt-get install -y --no-install-recommends \
         libdrm-dev \
-        libdrm-amdgpu-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Flash Attention in the application layer, only when install == "vllm".
