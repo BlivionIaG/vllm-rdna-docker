@@ -139,7 +139,7 @@ RUN if [ "${USE_SCCACHE}" = "1" ]; then \
 # `--offload-arch` flag. Without it, the build falls back to `native`
 # which can't detect a GPU in the Docker build context.
 RUN GPU_ARCHS="${PYTORCH_ROCM_ARCH}" \
-    HIP_ARCHITECTURES="${GPU_ARCHS}" \
+    HIP_ARCHITECTURES="$(echo "${GPU_ARCHS}" | tr ';' ',')" \
     uv pip install --system --no-build-isolation \
         git+https://github.com/Dao-AILab/causal-conv1d.git@4f6ae4e26ae5fe8af9372f8d312ab25cc4595223
 
