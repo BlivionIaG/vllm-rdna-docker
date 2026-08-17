@@ -45,6 +45,7 @@ target "base-rocm714" {
     TRITON_VERSION     = "3.7.1"
     PYTORCH_INDEX_URL  = "https://repo.amd.com/rocm/whl-multi-arch/"
     PYTORCH_ROCM_ARCH  = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
+    INSTALL_ROCM_SDK_DEVICE = "1"
     BASE_TAG           = "7.14.0"
   }
 }

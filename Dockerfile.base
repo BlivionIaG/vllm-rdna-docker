@@ -179,6 +179,34 @@ RUN uv pip install --system --pre --force-reinstall --no-cache \
         "torchaudio${TORCHAUDIO_VERSION:+==${TORCHAUDIO_VERSION}}" \
         "triton${TRITON_VERSION:+==${TRITON_VERSION}}"
 
+# Per-arch device kernel + library packages (rocm-sdk-device-* and
+# amd-torch-device-*, one wheel per gfx arch). The torch wheel from
+# PYTORCH_INDEX_URL is linked against the pip rocm-sdk layout and looks
+# for its code objects (torch/.kpack/torch_<arch>.kpack, rocBLAS
+# TensileLibrary_*_<arch>.{dat,hsaco}, ...) inside site-packages under
+# _rocm_sdk_libraries — the per-arch packages populate those trees.
+# Without them every kernel launch fails with hipErrorInvalidImage
+# ("device kernel image is invalid") on the matching GPU.
+#
+# Without them the image would rely on /opt/rocm (TheRock-built) instead,
+# which installs kernels to /opt/rocm/lib/rocblas/library — a tree the pip
+# rocm-sdk torch does NOT consult (its RUNPATH resolves to _rocm_sdk_*
+# under site-packages first).
+#
+# INSTALL_ROCM_SDK_DEVICE=1 installs for EVERY arch listed in
+# PYTORCH_ROCM_ARCH, making the image valid on any RDNA card
+# (gfx1030 and up). Default off: the download.pytorch.org index used for
+# base-rocm720 does not publish these packages.
+ARG INSTALL_ROCM_SDK_DEVICE
+RUN if [ "${INSTALL_ROCM_SDK_DEVICE}" = "1" ]; then \
+        for arch in $(echo "${PYTORCH_ROCM_ARCH}" | tr ';' ' '); do \
+            uv pip install --system --no-cache \
+                --index-url "${PYTORCH_INDEX_URL}" \
+                "rocm-sdk-device-${arch}==${ROCM_VERSION}" \
+                "amd-torch-device-${arch}==${PYTORCH_VERSION}"; \
+        done; \
+    fi
+
 # AMD SMI wheel (Python bindings shipped inside the ROCm tree).
 RUN cd /opt/rocm/share/amd_smi \
     && python -m pip wheel . --no-cache-dir --wheel-dir=/app/install \
@@ -227,6 +255,25 @@ ARG FLASH_ATTENTION_INSTALL
 ARG FLASH_ATTENTION_VERSION
 ARG FLASH_ATTENTION_REPO
 ARG FLASH_ATTENTION_REF
+ARG INSTALL_ROCM_SDK_DEVICE
+
+# Mirror the working host/venv runtime (the machine that runs the bare-metal
+# benches has /etc/ld.so.conf.d/10-rocm-7.14.conf -> /opt/rocm/core-7.14/lib).
+# The pip rocm-sdk torch links librocm_sysdeps_liblzma.so.5 and
+# librocm-openblas.so.0 at load time from those trees; registering them here
+# (plus the equivalent site-packages trees) makes the image work standalone
+# without the host's /etc/ld.so.conf.d entries.
+RUN if [ "${INSTALL_ROCM_SDK_DEVICE}" = "1" ]; then \
+        PKG="$(python -c 'import site; print(site.getsitepackages()[0])')"; \
+        printf '%s\n' \
+            "/opt/rocm/core-7.14/lib" \
+            "/opt/rocm/core-7.14/lib/rocm_sysdeps/lib" \
+            "/opt/rocm/core-7.14/lib/host-math/lib" \
+            "${PKG}/_rocm_sdk_core/lib" \
+            "${PKG}/_rocm_sdk_libraries/lib" \
+            > /etc/ld.so.conf.d/rocm-sdk.conf \
+            && ldconfig; \
+    fi
 
 LABEL org.opencontainers.image.title="vllm-rdna-base" \
       org.opencontainers.image.source="local" \
