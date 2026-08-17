@@ -132,7 +132,13 @@ RUN if [ "${USE_SCCACHE}" = "1" ]; then \
 # flash-attention). Placed AFTER the vLLM editable install so the 30+
 # min _rocm_C compile layer is cached and not invalidated by this
 # addition.
+#
+# HIP_ARCHITECTURES (not GPU_ARCHS — that's flash-attention's name) is
+# the env var causal_conv1d's setup.py reads at commit 4f6ae4e for the
+# `--offload-arch` flag. Without it, the build falls back to `native`
+# which can't detect a GPU in the Docker build context.
 RUN GPU_ARCHS="$(echo "${PYTORCH_ROCM_ARCH}" | tr ';' '\n' | grep -v '^gfx1030$' | paste -sd ';' -)" \
+    HIP_ARCHITECTURES="${GPU_ARCHS}" \
     uv pip install --system --no-build-isolation \
         git+https://github.com/Dao-AILab/causal-conv1d.git@4f6ae4e26ae5fe8af9372f8d312ab25cc4595223
 
