@@ -49,6 +49,7 @@ FROM ${BASE_IMAGE} AS source
 ARG VLLM_REPOSITORY
 ARG VLLM_REF
 ARG VLLM_COMMIT
+ARG VLLM_PATCH_FILE
 
 WORKDIR /src
 RUN git clone --depth 1 --branch "${VLLM_REF}" "${VLLM_REPOSITORY}" vllm \
@@ -65,8 +66,9 @@ RUN git clone --depth 1 --branch "${VLLM_REF}" "${VLLM_REPOSITORY}" vllm \
 # Empty VLLM_PATCH_FILE = no patch.
 COPY patches/ /src/patches/
 RUN if [ -n "${VLLM_PATCH_FILE}" ]; then \
-        echo "Applying patch: ${VLLM_PATCH_FILE}"; \
-        git apply "/src/${VLLM_PATCH_FILE}"; \
+        cd /src/vllm \
+        && git apply "/src/${VLLM_PATCH_FILE}" \
+        && echo "patch applied: ${VLLM_PATCH_FILE}"; \
     else \
         echo "VLLM_PATCH_FILE is empty; skipping patch step"; \
     fi
@@ -179,6 +181,40 @@ RUN if [ -n "${VLLM_FINAL_PATCH_FILE}" ]; then \
         && git apply "/src/${VLLM_FINAL_PATCH_FILE}" \
         && echo "final-stage patch applied: ${VLLM_FINAL_PATCH_FILE}"; \
     fi
+
+# Guard the amdsmi init/shutdown wrapper: in TP workers torch already owns
+# the HIP context, so amdsmi_init() may silently not-init and the finally's
+# amdsmi_shut_down() then raises AMDSMI_STATUS_NOT_INIT, killing the worker.
+# Best-effort only (these calls only feed cache-file names / topology hints).
+# Idempotent: if the wrapper is already guarded (e.g. the next full rebuild
+# applies the same change via VLLM_FINAL_PATCH_FILE), this is a no-op.
+RUN python - <<'PYEOF'
+import pathlib
+p = pathlib.Path("/src/vllm/vllm/platforms/rocm.py")
+src = p.read_text()
+old = """        amdsmi_init()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            amdsmi_shut_down()"""
+new = """        try:
+            amdsmi_init()
+        except Exception:
+            logger.debug("amdsmi_init failed; proceeding without amdsmi",
+                         exc_info=True)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            try:
+                amdsmi_shut_down()
+            except Exception:
+                logger.debug("amdsmi_shut_down failed; ignoring", exc_info=True)"""
+if old in src:
+    p.write_text(src.replace(old, new))
+    print("patched with_amdsmi_context (guarded amdsmi init/shutdown)")
+else:
+    print("with_amdsmi_context already guarded; no-op")
+PYEOF
 
 LABEL org.opencontainers.image.title="vllm-rdna" \
       org.opencontainers.image.source="local" \

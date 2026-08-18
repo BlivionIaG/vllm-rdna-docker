@@ -1,0 +1,24 @@
+diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
+index d7e5bf0..4e2979f 100644
+--- a/vllm/platforms/rocm.py
++++ b/vllm/platforms/rocm.py
+@@ -154,11 +154,18 @@ _sync_hip_cuda_env_vars()
+ def with_amdsmi_context(fn):
+     @wraps(fn)
+     def wrapper(*args, **kwargs):
+-        amdsmi_init()
++        try:
++            amdsmi_init()
++        except Exception:
++            logger.debug("amdsmi_init failed; proceeding without amdsmi",
++                         exc_info=True)
+         try:
+             return fn(*args, **kwargs)
+         finally:
+-            amdsmi_shut_down()
++            try:
++                amdsmi_shut_down()
++            except Exception:
++                logger.debug("amdsmi_shut_down failed; ignoring", exc_info=True)
+ 
+     return wrapper
