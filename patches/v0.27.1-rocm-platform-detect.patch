@@ -1,10 +1,11 @@
+diff --git a/vllm/platforms/__init__.py b/vllm/platforms/__init__.py
+index ac536af..7985220 100644
 --- a/vllm/platforms/__init__.py
 +++ b/vllm/platforms/__init__.py
-@@ -124,6 +124,19 @@
-             amdsmi.amdsmi_shut_down()
+@@ -125,6 +125,19 @@ def rocm_platform_plugin() -> str | None:
      except Exception as e:
          logger.debug("ROCm platform is not available because: %s", str(e))
-+
+ 
 +    # Fallback: amdsmi cannot enumerate devices once torch has taken the HIP
 +    # context (amdsmi_get_processor_handles() returns 0 after torch.cuda
 +    # initializes, on both bare metal and in containers). torch.version.hip +
@@ -17,6 +18,26 @@
 +                logger.debug("Confirmed ROCm platform via torch.version.hip fallback.")
 +        except Exception as e:
 +            logger.debug("ROCm platform torch fallback failed: %s", str(e))
- 
++
      return "vllm.platforms.rocm.RocmPlatform" if is_rocm else None
  
+ 
+diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
+index d7e5bf0..6551317 100644
+--- a/vllm/platforms/rocm.py
++++ b/vllm/platforms/rocm.py
+@@ -770,7 +770,13 @@ class RocmPlatform(Platform):
+     @lru_cache(maxsize=8)
+     def get_device_name(cls, device_id: int = 0) -> str:
+         physical_device_id = cls.device_id_to_physical_device_id(device_id)
+-        handle = amdsmi_get_processor_handles()[physical_device_id]
++        try:
++            handle = amdsmi_get_processor_handles()[physical_device_id]
++        except IndexError:
++            # amdsmi returns 0 handles once torch has taken the HIP context
++            # (AMDSMI_STATUS_NOT_INIT), so index it defensively. This only
++            # feeds cache-file names, so a synthetic name is sufficient.
++            return f"RDNA2_gpu_{physical_device_id}"
+         asic_info = amdsmi_get_gpu_asic_info(handle)
+         asic_info_device_id: str = asic_info["device_id"]
+         if asic_info_device_id in _ROCM_DEVICE_ID_NAME_MAP:
