@@ -196,5 +196,13 @@ RUN python --version \
     && python -c "import vllm; print('vllm', vllm.__version__)" \
     && python -c "import vllm._rocm_C; print('vllm._rocm_C OK')"
 
+# Eager HIP init at interpreter start (sitecustomize.py -> site-packages).
+# vLLM v0.27.1 workers assert local_rank < torch.accelerator.device_count();
+# without eager torch.cuda.init() the count reads 0 in the container and the
+# assert fails ("DP adjusted local rank N is out of bounds for 0 devices").
+# Mirrors the bare-metal venv where sitecustomize forces rocBLAS eagerly.
+COPY sitecustomize.py /usr/local/lib/python3.12/dist-packages/sitecustomize.py
+RUN python -c "import sitecustomize; import torch; print('device_count:', torch.cuda.device_count())"
+
 WORKDIR /app
 ENTRYPOINT ["vllm"]
