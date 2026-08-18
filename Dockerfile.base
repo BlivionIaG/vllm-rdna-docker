@@ -257,18 +257,19 @@ ARG FLASH_ATTENTION_REPO
 ARG FLASH_ATTENTION_REF
 ARG INSTALL_ROCM_SDK_DEVICE
 
-# Mirror the working host/venv runtime (the machine that runs the bare-metal
-# benches has /etc/ld.so.conf.d/10-rocm-7.14.conf -> /opt/rocm/core-7.14/lib).
-# The pip rocm-sdk torch links librocm_sysdeps_liblzma.so.5 and
-# librocm-openblas.so.0 at load time from those trees; registering them here
-# (plus the equivalent site-packages trees) makes the image work standalone
-# without the host's /etc/ld.so.conf.d entries.
+# Register the pip rocm-sdk runtime lib paths (librocm_sysdeps_*, host-math,
+# _rocm_sdk_core/lib) so the site-packages rocm-sdk torch resolves them at
+# load time without host /etc/ld.so.conf.d entries. Paths are derived from
+# the actual install, not hardcoded to a ROCm version.
 RUN if [ "${INSTALL_ROCM_SDK_DEVICE}" = "1" ]; then \
         PKG="$(python -c 'import site; print(site.getsitepackages()[0])')"; \
+        ROCM_LIB="$(ls -d /opt/rocm/core-*/lib 2>/dev/null | head -1)"; \
+        ROCM_SYSDEPS="$(ls -d /opt/rocm/core-*/lib/rocm_sysdeps 2>/dev/null | head -1)"; \
+        ROCM_HOSTMATH="$(ls -d /opt/rocm/core-*/lib/host-math/lib 2>/dev/null | head -1)"; \
         printf '%s\n' \
-            "/opt/rocm/core-7.14/lib" \
-            "/opt/rocm/core-7.14/lib/rocm_sysdeps/lib" \
-            "/opt/rocm/core-7.14/lib/host-math/lib" \
+            "${ROCM_LIB}" \
+            "${ROCM_SYSDEPS}/lib" \
+            "${ROCM_HOSTMATH}" \
             "${PKG}/_rocm_sdk_core/lib" \
             "${PKG}/_rocm_sdk_libraries/lib" \
             > /etc/ld.so.conf.d/rocm-sdk.conf \
