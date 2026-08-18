@@ -1,19 +1,25 @@
 diff --git a/vllm/platforms/__init__.py b/vllm/platforms/__init__.py
-index ac536af..7985220 100644
+index ac536af..f6aae32 100644
 --- a/vllm/platforms/__init__.py
 +++ b/vllm/platforms/__init__.py
-@@ -125,6 +125,19 @@ def rocm_platform_plugin() -> str | None:
+@@ -125,6 +125,25 @@ def rocm_platform_plugin() -> str | None:
      except Exception as e:
          logger.debug("ROCm platform is not available because: %s", str(e))
  
 +    # Fallback: amdsmi cannot enumerate devices once torch has taken the HIP
 +    # context (amdsmi_get_processor_handles() returns 0 after torch.cuda
-+    # initializes, on both bare metal and in containers). torch.version.hip +
-+    # torch.cuda.is_available() are authoritative for a ROCm torch build.
++    # initializes, on both bare metal and in containers). torch.version.hip is
++    # authoritative for a ROCm torch build. NOTE: do NOT also require
++    # torch.cuda.is_available() here — vLLM sets PYTORCH_NVML_BASED_CUDA_CHECK=1
++    # at import, which spawned workers inherit; is_available() then takes the
++    # NVML path, returns False on ROCm (no NVIDIA NVML), and platform
++    # detection would fall through to UnspecifiedPlatform. torch.version.hip
++    # alone distinguishes a ROCm wheel; CUDA boxes are still caught by the
++    # cuda_platform_plugin evaluated first.
 +    if not is_rocm:
 +        try:
 +            import torch
-+            if torch.version.hip is not None and torch.cuda.is_available():
++            if torch.version.hip is not None:
 +                is_rocm = True
 +                logger.debug("Confirmed ROCm platform via torch.version.hip fallback.")
 +        except Exception as e:
@@ -23,20 +29,22 @@ index ac536af..7985220 100644
  
  
 diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
-index d7e5bf0..6551317 100644
+index d7e5bf0..58544ea 100644
 --- a/vllm/platforms/rocm.py
 +++ b/vllm/platforms/rocm.py
-@@ -770,7 +770,13 @@ class RocmPlatform(Platform):
+@@ -770,7 +770,15 @@ class RocmPlatform(Platform):
      @lru_cache(maxsize=8)
      def get_device_name(cls, device_id: int = 0) -> str:
          physical_device_id = cls.device_id_to_physical_device_id(device_id)
 -        handle = amdsmi_get_processor_handles()[physical_device_id]
 +        try:
 +            handle = amdsmi_get_processor_handles()[physical_device_id]
-+        except IndexError:
-+            # amdsmi returns 0 handles once torch has taken the HIP context
-+            # (AMDSMI_STATUS_NOT_INIT), so index it defensively. This only
-+            # feeds cache-file names, so a synthetic name is sufficient.
++        except (IndexError, Exception) as e:
++            # amdsmi either returns an empty list after torch has taken the
++            # HIP context (IndexError) or raises AmdSmiLibraryException
++            # (AMDSMI_STATUS_NOT_INIT). This only feeds cache-file names, so
++            # a synthetic name is sufficient.
++            logger.debug("get_device_name fallback (%s): %s", type(e).__name__, e)
 +            return f"RDNA2_gpu_{physical_device_id}"
          asic_info = amdsmi_get_gpu_asic_info(handle)
          asic_info_device_id: str = asic_info["device_id"]
