@@ -171,11 +171,12 @@ ARG CONFIG_HASH
 # Final-stage Python-only patch (e.g. platform detection fix). Applied AFTER
 # the builder stage so the long HIP compile layer stays cached — vLLM is
 # installed editable from /src/vllm, so patching the tree post-build is
-# enough (no HIP recompile). VLLM_FINAL_PATCH_FILE names a file in patches/.
+# enough (no HIP recompile). VLLM_FINAL_PATCH_FILE names a file in patches/
+# (same layout as VLLM_PATCH_FILE, e.g. "patches/v0.27.1-foo.patch").
 ARG VLLM_FINAL_PATCH_FILE
 RUN if [ -n "${VLLM_FINAL_PATCH_FILE}" ]; then \
         cd /src/vllm \
-        && git apply "/src/patches/${VLLM_FINAL_PATCH_FILE}" \
+        && git apply "/src/${VLLM_FINAL_PATCH_FILE}" \
         && echo "final-stage patch applied: ${VLLM_FINAL_PATCH_FILE}"; \
     fi
 
