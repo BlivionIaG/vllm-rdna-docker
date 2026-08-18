@@ -1,0 +1,22 @@
+--- a/vllm/platforms/__init__.py
++++ b/vllm/platforms/__init__.py
+@@ -124,6 +124,19 @@
+             amdsmi.amdsmi_shut_down()
+     except Exception as e:
+         logger.debug("ROCm platform is not available because: %s", str(e))
++
++    # Fallback: amdsmi cannot enumerate devices once torch has taken the HIP
++    # context (amdsmi_get_processor_handles() returns 0 after torch.cuda
++    # initializes, on both bare metal and in containers). torch.version.hip +
++    # torch.cuda.is_available() are authoritative for a ROCm torch build.
++    if not is_rocm:
++        try:
++            import torch
++            if torch.version.hip is not None and torch.cuda.is_available():
++                is_rocm = True
++                logger.debug("Confirmed ROCm platform via torch.version.hip fallback.")
++        except Exception as e:
++            logger.debug("ROCm platform torch fallback failed: %s", str(e))
+ 
+     return "vllm.platforms.rocm.RocmPlatform" if is_rocm else None
+ 

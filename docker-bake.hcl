@@ -159,6 +159,7 @@ target "vllm-0271-rocm714" {
     PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
     IMAGE_TAG        = "v0.27.1-rocm7.14.0"
     VLLM_PATCH_FILE  = "patches/v0.27.1-rocm-platforms.patch"
+    VLLM_FINAL_PATCH_FILE = "patches/v0.27.1-rocm-platform-detect.patch"
   }
 }
 
