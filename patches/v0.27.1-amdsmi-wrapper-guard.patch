@@ -1,5 +1,5 @@
 diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
-index d7e5bf0..4e2979f 100644
+index 9779035..05410c9 100644
 --- a/vllm/platforms/rocm.py
 +++ b/vllm/platforms/rocm.py
 @@ -154,11 +154,18 @@ _sync_hip_cuda_env_vars()
@@ -22,3 +22,4 @@ index d7e5bf0..4e2979f 100644
 +                logger.debug("amdsmi_shut_down failed; ignoring", exc_info=True)
  
      return wrapper
+ 
