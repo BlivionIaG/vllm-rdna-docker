@@ -1,0 +1,37 @@
+diff --git a/vllm/platforms/__init__.py b/vllm/platforms/__init__.py
+index ac536aff00..598fa68517 100644
+--- a/vllm/platforms/__init__.py
++++ b/vllm/platforms/__init__.py
+@@ -125,6 +125,15 @@ def rocm_platform_plugin() -> str | None:
+     except Exception as e:
+         logger.debug("ROCm platform is not available because: %s", str(e))
+ 
++    if not is_rocm:
++        try:
++            import torch
++            if torch.version.hip is not None:
++                is_rocm = True
++                logger.debug("Confirmed ROCm platform via torch.version.hip fallback.")
++        except Exception as e:
++            logger.debug("ROCm platform torch fallback failed: %s", str(e))
++
+     return "vllm.platforms.rocm.RocmPlatform" if is_rocm else None
+ 
+ 
+diff --git a/vllm/v1/worker/gpu_worker.py b/vllm/v1/worker/gpu_worker.py
+index bbab98dbd7..40049a8e5d 100644
+--- a/vllm/v1/worker/gpu_worker.py
++++ b/vllm/v1/worker/gpu_worker.py
+@@ -356,6 +356,12 @@ class Worker(WorkerBase):
+                         f"({len(assigned_physical_gpu_ids)})"
+                     )
+             else:
++                # Ensure the HIP runtime is initialized before counting
++                # devices. On ROCm torch.accelerator.device_count() returns 0
++                # until torch.cuda.init() is called (HIP initializes lazily),
++                # which otherwise fails the assert below even though GPUs are
++                # present. CUDA initializes implicitly; HIP does not.
++                torch.cuda.init()
+                 assert self.local_rank < torch.accelerator.device_count(), (
+                     f"DP adjusted local rank {self.local_rank} is out of "
+                     f"bounds for {torch.accelerator.device_count()} devices."
