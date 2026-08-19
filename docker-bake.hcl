@@ -126,24 +126,6 @@ target "vllm-0260-rocm714-extras" {
   }
 }
 
-target "vllm-0271-rocm720" {
-  dockerfile = "Dockerfile.vllm"
-  tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1"]
-  platforms  = ["linux/amd64"]
-  target     = "final"
-  args = {
-    BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.2.0"
-    VLLM_REPOSITORY  = "https://github.com/vllm-project/vllm.git"
-    VLLM_REF         = "v0.27.1"
-    VLLM_COMMIT      = "6e448d0ea9bf3d88d898b65449ca6dc2aec170ac"
-    VLLM_VARIANT     = "upstream"
-    TORCH_BACKEND    = "rocm7.2"
-    PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
-    IMAGE_TAG        = "v0.27.1"
-    VLLM_PATCH_FILE  = "patches/v0.27.1-rocm-platforms.patch"
-  }
-}
-
 target "vllm-0271-rocm714" {
   dockerfile = "Dockerfile.vllm"
   tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1-rocm7.14.0"]
@@ -160,24 +142,6 @@ target "vllm-0271-rocm714" {
     IMAGE_TAG        = "v0.27.1-rocm7.14.0"
     VLLM_PATCH_FILE  = "patches/v0.27.1-rocm-platforms.patch"
     VLLM_FINAL_PATCH_FILE = "patches/v0.27.1-rocm-platform-detect.patch"
-  }
-}
-
-target "vllm-0271-rocm720-extras" {
-  dockerfile = "Dockerfile.vllm"
-  tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1-extras"]
-  platforms  = ["linux/amd64"]
-  target     = "final"
-  args = {
-    BASE_IMAGE       = "docker.io/blivioniag/rocm-rdna:7.2.0"
-    VLLM_REPOSITORY  = "https://github.com/BlivionIaG/vllm.git"
-    VLLM_REF         = "v0.27.1-extras"
-    VLLM_COMMIT      = ""
-    VLLM_VARIANT     = "extras-fork"
-    TORCH_BACKEND    = "rocm7.2"
-    PYTORCH_ROCM_ARCH = "gfx1030;gfx1100;gfx1101;gfx1150;gfx1151;gfx1200;gfx1201"
-    IMAGE_TAG        = "v0.27.1-extras"
-    VLLM_PATCH_FILE  = "patches/v0.27.1-rocm-platforms.patch"
   }
 }
 
@@ -214,9 +178,7 @@ group "all-vllm" {
     "vllm-0260-rocm714",
     "vllm-0260-rocm720-extras",
     "vllm-0260-rocm714-extras",
-    "vllm-0271-rocm720",
     "vllm-0271-rocm714",
-    "vllm-0271-rocm720-extras",
     "vllm-0271-rocm714-extras",
   ]
 }
