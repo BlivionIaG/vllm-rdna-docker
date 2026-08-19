@@ -147,7 +147,10 @@ target "vllm-0271-rocm714" {
 
 target "vllm-0271-rocm714-extras" {
   dockerfile = "Dockerfile.vllm"
-  tags       = ["docker.io/blivioniag/vllm-rdna:v0.27.1-extras-rocm7.14.0"]
+  tags       = [
+    "docker.io/blivioniag/vllm-rdna:v0.27.1-extras",
+    "docker.io/blivioniag/vllm-rdna:v0.27.1-extras-rocm7.14.0",
+  ]
   platforms  = ["linux/amd64"]
   target     = "final"
   args = {
